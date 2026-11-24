@@ -15,14 +15,14 @@ import {
 import { initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from "firebase/app-check";
 import { getAI, GoogleAIBackend, type AI } from "firebase/ai";
 
-// Default/mock config allows offline PWA boot without crashing before keys are provided
+// Default config connects to triagerelay-c2127 with environment variable overrides
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyMockKeyForOfflineEvaluation2026",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "triagerelay-hybrid-2026.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "triagerelay-hybrid-2026",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "triagerelay-hybrid-2026.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "1029384756",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:1029384756:web:a1b2c3d4e5f67890"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDz_OX5uO_EKiqcMpja4NHNaUr3J-Ojk4o",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "triagerelay-c2127.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "triagerelay-c2127",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "triagerelay-c2127.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "307645834778",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:307645834778:web:5969ec9522de73e65893a3"
 };
 
 // Enable App Check debug token for testing, judging, and CI/CD
