@@ -114,7 +114,16 @@ export function subscribeToTriageReports(
     onUpdate(cached);
   }
 
-  return onSnapshot(
+  const handleStorageEvent = (e: StorageEvent) => {
+    if (e.key === LOCAL_STORAGE_KEY) {
+      onUpdate(getLocalCachedReports());
+    }
+  };
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", handleStorageEvent);
+  }
+
+  const unsubFirestore = onSnapshot(
     q,
     (snapshot) => {
       const liveReports: TriageReport[] = [];
@@ -136,6 +145,37 @@ export function subscribeToTriageReports(
       onUpdate(getLocalCachedReports());
     }
   );
+
+  return () => {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("storage", handleStorageEvent);
+    }
+    unsubFirestore();
+  };
+}
+
+/**
+ * Updates verification status locally and syncs to Firestore when online
+ */
+export async function updateReportVerification(
+  reportId: string,
+  verified: boolean,
+  isSimulatedOffline = false
+): Promise<TriageReport[]> {
+  const updated = getLocalCachedReports().map(r =>
+    r.report_id === reportId ? { ...r, verified_by_coordinator: verified } : r
+  );
+  saveLocalCachedReports(updated);
+
+  if (navigator.onLine && !isSimulatedOffline) {
+    try {
+      await setDoc(doc(db, "triage_reports", reportId), { verified_by_coordinator: verified }, { merge: true });
+    } catch (err) {
+      console.warn("Verification sync deferred:", err);
+    }
+  }
+
+  return updated;
 }
 
 /**

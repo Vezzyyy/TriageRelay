@@ -64,12 +64,10 @@ flowchart TD
 
 ---
 
-## 1-Click Realistic Disaster Scenarios
+## Application Routes
 
-The app includes 3 realistic pre-configured scenarios directly in the Field Intake view for instant testing:
-1. **01 Collapse (Pasadena, CA — I-210 Corridor):** Partial residential pancake collapse with trapped occupants, gas odor, phone number, street address, and SSN.
-2. **02 Flash Flood (Houston, TX — I-10 / Cypress Creek):** Submerged highway access bridge with stranded motorists, deep laceration, and busy 911 circuits.
-3. **03 Route Block (Eureka, CA — US-101 MP-42):** Downed high-voltage power lines and mudslide blocking ambulance access along a mountain corridor.
+* **`/` or `/report` (Incident Reporter):** Dedicated field intake terminal for attaching optional site damage photos and unstructured descriptions, performing local PII scrubbing and hazard classification with curated safety guidance.
+* **`/dispatch` (Dispatch Center):** Dedicated coordinator receiver view showing real-time incoming reports, verification state, and multi-report situational briefing generation.
 
 ---
 

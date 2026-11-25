@@ -1,77 +1,78 @@
 import { useState, useEffect } from "react";
-import { TopTelemetryBar } from "./components/TopTelemetryBar";
-import { FieldIntakeView } from "./components/FieldIntakeView";
-import { CommandBoardView } from "./components/CommandBoardView";
-import { 
-  checkGeminiNanoAvailability 
-} from "./services/hybridAi";
-import { 
-  ensureAuthenticatedUser, 
-  getActiveDisasterProtocol 
+import { Navbar } from "./components/Navbar";
+import { ReportPage } from "./pages/ReportPage";
+import { DispatchPage } from "./pages/DispatchPage";
+import {
+  ensureAuthenticatedUser,
+  getActiveDisasterProtocol
 } from "./lib/firebase";
-import { 
-  subscribeToTriageReports, 
-  flushOfflineQueue, 
-  saveLocalCachedReports,
+import {
+  subscribeToTriageReports,
+  flushOfflineQueue,
   clearAllReports,
-  getLocalCachedReports
+  getLocalCachedReports,
+  updateReportVerification
 } from "./services/storageQueue";
-import type { TriageReport, TelemetryState } from "./types/triage";
+import type { TriageReport } from "./types/triage";
+
+function resolvePageFromPath(pathname: string): "report" | "dispatch" {
+  const clean = pathname.toLowerCase().replace(/\/+$/, "");
+  if (clean === "/dispatch" || clean === "/command") {
+    return "dispatch";
+  }
+  return "report";
+}
 
 export function App() {
-  const [activeView, setActiveView] = useState<"field" | "command">("field");
+  const [currentPage, setCurrentPage] = useState<"report" | "dispatch">(() =>
+    typeof window !== "undefined" ? resolvePageFromPath(window.location.pathname) : "report"
+  );
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator !== "undefined" ? navigator.onLine : true
+  );
   const [isSimulatedOffline, setIsSimulatedOffline] = useState(false);
   const [reports, setReports] = useState<TriageReport[]>([]);
-  
-  const [telemetry, setTelemetry] = useState<TelemetryState>({
-    isOnline: typeof navigator !== "undefined" ? navigator.onLine : true,
-    nanoState: "READY", // Default optimistic or checked
-    activeProtocol: "EARTHQUAKE",
-    reportsTriagedLocally: 0,
-    cloudCallsCount: 0,
-    rawImagesUploaded: 0,
-    localComputeCostUsd: 0.00
-  });
 
-  // 1. App initialization: Auth, Remote Config, Hardware Detection
+  // Update browser tab title per page
   useEffect(() => {
-    // Silent anonymous auth
+    document.title =
+      currentPage === "dispatch"
+        ? "TriageRelay — Dispatch Center"
+        : "TriageRelay — Report Incident";
+  }, [currentPage]);
+
+  // Browser history popstate listener for clean two-page URLs
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPage(resolvePageFromPath(window.location.pathname));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  // Auth, Remote Config, Network status, and Real-time Report Sync
+  useEffect(() => {
     ensureAuthenticatedUser().catch(console.warn);
+    getActiveDisasterProtocol().catch(console.warn);
 
-    // Check Gemini Nano availability
-    checkGeminiNanoAvailability().then((state) => {
-      setTelemetry((prev) => ({ ...prev, nanoState: state }));
-    });
-
-    // Remote Config active protocol
-    getActiveDisasterProtocol().then((protocol) => {
-      setTelemetry((prev) => ({ ...prev, activeProtocol: protocol }));
-    });
-
-    // Network online/offline listeners
     const handleOnline = () => {
-      setTelemetry((prev) => ({ ...prev, isOnline: true }));
+      setIsOnline(true);
       flushOfflineQueue().then((synced) => {
         if (synced > 0) {
-          console.info(`Auto-synced ${synced} queued reports back to Firestore.`);
+          setReports(getLocalCachedReports());
         }
       });
     };
 
     const handleOffline = () => {
-      setTelemetry((prev) => ({ ...prev, isOnline: false }));
+      setIsOnline(false);
     };
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
-    // Subscribe to reports (Firestore + IndexedDB offline cache)
     const unsubscribe = subscribeToTriageReports((updatedReports) => {
       setReports(updatedReports);
-      setTelemetry((prev) => ({
-        ...prev,
-        reportsTriagedLocally: updatedReports.length
-      }));
     });
 
     return () => {
@@ -81,41 +82,34 @@ export function App() {
     };
   }, []);
 
-  // Handle report submission
-  const handleReportSubmitted = (newReport: TriageReport) => {
-    setReports((prev) => [newReport, ...prev.filter(r => r.report_id !== newReport.report_id)]);
+  const handleNavigate = (path: "/report" | "/dispatch") => {
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, "", path);
+    }
+    setCurrentPage(resolvePageFromPath(path));
   };
 
-  // Toggle verification on Command Board
-  const handleToggleVerifyReport = (reportId: string) => {
-    const updated = reports.map((r) => {
-      if (r.report_id === reportId) {
-        return { ...r, verified_by_coordinator: !r.verified_by_coordinator };
-      }
-      return r;
-    });
+  const handleReportSubmitted = (newReport: TriageReport) => {
+    setReports((prev) => [newReport, ...prev.filter((r) => r.report_id !== newReport.report_id)]);
+  };
+
+  const handleToggleVerifyReport = async (reportId: string) => {
+    const target = reports.find((r) => r.report_id === reportId);
+    if (!target) return;
+    const updated = await updateReportVerification(
+      reportId,
+      !target.verified_by_coordinator,
+      isSimulatedOffline
+    );
     setReports(updated);
-    saveLocalCachedReports(updated);
   };
 
   const handleClearDatabase = async () => {
     await clearAllReports();
     setReports([]);
-    setTelemetry((prev) => ({ ...prev, reportsTriagedLocally: 0, cloudCallsCount: 0 }));
   };
 
-  const handleIncrementEdgeCount = () => {
-    // Edge count is derived directly from reports.length to prevent snapshot double-counting
-  };
-
-  const handleIncrementCloudCount = () => {
-    setTelemetry((prev) => ({
-      ...prev,
-      cloudCallsCount: prev.cloudCallsCount + 1
-    }));
-  };
-
-  const handleToggleSimulatedOffline = async () => {
+  const handleToggleOffline = async () => {
     const nextOffline = !isSimulatedOffline;
     setIsSimulatedOffline(nextOffline);
     if (!nextOffline && navigator.onLine) {
@@ -130,55 +124,30 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-[#F5F5F2] text-[#141517] flex flex-col font-sans selection:bg-[#C9331B]/15 selection:text-[#141517]">
-      {/* Persistent Telemetry Bar */}
-      <TopTelemetryBar
-        telemetry={{ ...telemetry, reportsTriagedLocally: reports.length }}
-        activeView={activeView}
-        onSwitchView={setActiveView}
-        onToggleSimulatedOffline={handleToggleSimulatedOffline}
+      <Navbar
+        currentPage={currentPage}
+        onNavigate={handleNavigate}
+        isOnline={isOnline}
         isSimulatedOffline={isSimulatedOffline}
+        onToggleOffline={handleToggleOffline}
         queuedCount={queuedCount}
       />
 
-      {/* Main Viewport */}
       <main className="flex-1 pb-[34px]">
-        {activeView === "field" ? (
-          <FieldIntakeView
+        {currentPage === "report" ? (
+          <ReportPage
             onReportSubmitted={handleReportSubmitted}
-            onIncrementEdgeCount={handleIncrementEdgeCount}
             isSimulatedOffline={isSimulatedOffline}
             reports={reports}
           />
         ) : (
-          <CommandBoardView
+          <DispatchPage
             reports={reports}
             onToggleVerifyReport={handleToggleVerifyReport}
-            onIncrementCloudCount={handleIncrementCloudCount}
             onClearDatabase={handleClearDatabase}
           />
         )}
       </main>
-
-      {/* Restrained Architectural Footer */}
-      <footer className="border-t border-[#E0E0DA] bg-[#F5F5F2] text-[#868991] text-[12px] py-[13px] px-[21px] font-mono">
-        <div className="max-w-[1360px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-[8px]">
-          <div className="flex items-center gap-[8px]">
-            <span className="text-[#141517] font-medium">TriageRelay</span>
-            <span>/</span>
-            <span>#BuildHybridAI 2026</span>
-            <span>/</span>
-            <span className="text-[#186847]">Zero-PII Wire</span>
-          </div>
-
-          <div className="flex items-center gap-[13px] text-[#868991]">
-            <span>Edge: Gemini Nano</span>
-            <span>·</span>
-            <span>Cloud: Gemini 2.5 Flash</span>
-            <span>·</span>
-            <span>Apache 2.0</span>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
