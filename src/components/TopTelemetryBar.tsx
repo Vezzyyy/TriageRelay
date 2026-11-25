@@ -102,8 +102,10 @@ export const TopTelemetryBar: React.FC<TopTelemetryBarProps> = ({
             </div>
 
             <div className="hidden sm:flex px-[13px] items-center gap-[5px]">
-              <span className="text-[#868991]">Protocol</span>
-              <span className="text-[#141517]">{telemetry.activeProtocol}</span>
+              <span className="text-[#868991]">FEMA</span>
+              <span className="text-[#141517]">
+                {telemetry.activeProtocol === "FLASH_FLOOD" ? "Flash Flood" : telemetry.activeProtocol === "EARTHQUAKE" ? "Earthquake" : "General"}
+              </span>
             </div>
 
             <div className="px-[13px] flex items-center gap-[8px]">

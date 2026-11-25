@@ -2,100 +2,92 @@ import { getValue, fetchAndActivate } from "firebase/remote-config";
 import { remoteConfig } from "../lib/firebase";
 import type { HazardType, SafetyProtocolCard } from "../types/triage";
 
-// Static vetted emergency protocol cards (guaranteed safety, no hallucinated medical advice)
+// Static vetted emergency protocol cards aligned with FEMA CERT, USAR, NWS, Red Cross, and OSHA standards
 export const STATIC_SAFETY_PROTOCOLS: Record<HazardType, SafetyProtocolCard> = {
   STRUCTURAL_COLLAPSE: {
-    id: "card-struct-collapse-v2",
+    id: "card-struct-collapse-v3",
     hazard_type: "STRUCTURAL_COLLAPSE",
-    title: "Structural Collapse / Entrapment Protocol",
+    title: "FEMA USAR Structural Collapse Protocol",
     urgency_level: "IMMEDIATE_ACTION",
     immediate_actions: [
-      "Establish a 1.5x building height perimeter buffer immediately.",
-      "Shut off main gas, electrical, and water distribution lines at sector boundary.",
-      "Call for heavy urban search and rescue (USAR) acoustic listening probes.",
-      "Instruct victims to tap on pipes/walls with rocks; avoid screaming to preserve oxygen."
+      "Call or text 911 when cell service permits; if voice circuits are congested, send SMS or relay via CERT net.",
+      "Mark building exterior with FEMA X-code triage notation and await 911 / USAR heavy extraction.",
+      "Shut off main gas valve at the meter only if natural gas odor or hiss is detected; establish perimeter."
     ],
     contraindications: [
-      "DO NOT enter unreinforced masonry structures with visible diagonal shear fractures.",
-      "DO NOT use motorized excavation equipment directly above confirmed trapped individuals.",
-      "DO NOT light open flames or use non-intrinsically safe radios due to explosive gas leaks."
+      "DO NOT enter unstable or pancake-collapsed structures with diagonal shear cracks.",
+      "DO NOT ignite open flames, operate sparks, or key non-intrinsically safe radios near gas leaks."
     ],
-    broadcast_channel: "VHF Tactical Channel 16 (156.800 MHz)",
-    version: "2026.4-USAR-VETTED"
+    broadcast_channel: "911 / CERT Tactical Ch. 4 (462.675 MHz)",
+    version: "FEMA-USAR-2026.4"
   },
   FLASH_FLOOD: {
-    id: "card-flash-flood-v2",
+    id: "card-flash-flood-v3",
     hazard_type: "FLASH_FLOOD",
-    title: "Flash Flood & Swiftwater Inundation Protocol",
+    title: "NWS Swiftwater & Flash Flood Protocol",
     urgency_level: "IMMEDIATE_ACTION",
     immediate_actions: [
-      "Direct all field units and civilians to high ground (>15m above baseline river level).",
-      "Deploy throw-bags and tensioned diagonal ropes from upstream anchors.",
-      "Mark rising water crest rates on vertical structures at 15-minute intervals.",
-      "Broadcast evacuation alerts on emergency siren frequencies."
+      "Call or text 911 / Coast Guard immediately; if circuits are busy, relay coordinates over CERT radio net.",
+      "Move stranded individuals to highest structural floor or roof access with visible high-contrast signaling.",
+      "Monitor rising creek or drainage crest levels at 15-minute intervals from high ground."
     ],
     contraindications: [
-      "DO NOT attempt to drive or walk through moving water deeper than 15 cm (6 inches).",
-      "DO NOT tie rescue personnel into safety lines without quick-release chest harnesses.",
-      "DO NOT drink or sanitize wounds with stagnant surface flood water (high biohazard risk)."
+      "Turn Around, Don't Drown: NEVER walk or drive through moving floodwater deeper than 6 inches.",
+      "DO NOT enter swiftwater currents without Coast Guard / swiftwater PFD and quick-release tethers."
     ],
-    broadcast_channel: "Disaster Net 4 (462.675 MHz)",
-    version: "2026.2-SWIFTWATER-VETTED"
+    broadcast_channel: "911 / Swiftwater Ops Ch. 9 (156.450 MHz)",
+    version: "NWS-CERT-2026.2"
   },
   MEDICAL_EMERGENCY: {
-    id: "card-medical-triage-v2",
+    id: "card-medical-triage-v3",
     hazard_type: "MEDICAL_EMERGENCY",
-    title: "Mass Casualty Field Triage (START Protocol)",
+    title: "Red Cross / Stop the Bleed Triage Protocol",
     urgency_level: "IMMEDIATE_ACTION",
     immediate_actions: [
-      "Perform rapid START triage: Ability to walk? Respiration rate? Perfusion/Radial pulse? Mental status?",
-      "Apply high-and-tight commercial tourniquets immediately for arterial extremity bleeding.",
-      "Position unconscious breathing casualties in the recovery position to protect airway.",
-      "Establish Casualty Collection Point (CCP) upwind from dust or hazardous plumes."
+      "Call 911 immediately; use SMS text-to-911 or CERT net relay if cellular voice circuits are busy.",
+      "Apply direct firm pressure with clean cloth; apply tourniquet 2–3 inches above severe limb bleed.",
+      "Perform rapid START triage (Respirations, Perfusion, Mental Status) and stage at upwind Collection Point."
     ],
     contraindications: [
-      "DO NOT administer oral fluids, medications, or food to casualties pending surgery.",
-      "DO NOT remove penetrating impaled objects (stabilize in place with bulky dressings).",
-      "DO NOT move patients with suspected spinal trauma unless immediate life threat exists."
+      "DO NOT move victims with suspected spinal or neck trauma unless immediate life threat exists.",
+      "DO NOT remove impaled objects or give oral fluids to casualties pending emergency transport."
     ],
-    broadcast_channel: "Triage Med-Net 1 (155.340 MHz)",
-    version: "2026.1-START-VETTED"
+    broadcast_channel: "EMS Dispatch Net 1 (155.340 MHz)",
+    version: "CERT-START-2026.1"
   },
   FIRE_HAZARD: {
-    id: "card-fire-hazard-v2",
+    id: "card-fire-hazard-v3",
     hazard_type: "FIRE_HAZARD",
-    title: "Urban Fire & Gas Dispersion Containment",
+    title: "Fire & Hazmat Stand-Off Containment",
     urgency_level: "IMMEDIATE_ACTION",
     immediate_actions: [
-      "Evacuate cross-wind and up-wind from thick smoke or vapor plumes.",
-      "Establish safe stand-off distance from liquid propane / industrial tanks (minimum 300m).",
-      "Deploy dry chemical or water fog lines to protect evacuation corridors."
+      "Call or text 911 immediately; relay wind direction and smoke plume vector to County EOC dispatch.",
+      "Evacuate civilians cross-wind and upwind at least 1,000 feet from pressurized fuel or propane tanks.",
+      "Keep access corridors clear for arriving Fire and Hazmat apparatus."
     ],
     contraindications: [
-      "DO NOT apply straight water streams directly into high-voltage electrical transformers.",
-      "DO NOT enter enclosed basements without self-contained breathing apparatus (SCBA).",
-      "DO NOT ventilate roof or doors before charged hose lines are in position."
+      "DO NOT drive through dense wildfire smoke or attempt to cross active fire lines.",
+      "DO NOT apply water streams to energized electrical equipment or unknown chemical plumes."
     ],
-    broadcast_channel: "Fire Ops 3 (154.280 MHz)",
-    version: "2026.3-FIRE-VETTED"
+    broadcast_channel: "Fire Tactical Ch. 3 (154.280 MHz)",
+    version: "OSHA-FIRE-2026.3"
   },
   BLOCKED_ACCESS: {
-    id: "card-blocked-access-v2",
+    id: "card-blocked-access-v3",
     hazard_type: "BLOCKED_ACCESS",
-    title: "Route Obstruction & Debris Clearance Protocol",
+    title: "OSHA / FEMA Downed Lines & Route Protocol",
     urgency_level: "HEIGHTENED_CAUTION",
     immediate_actions: [
-      "Survey alternative primary evacuation and ambulance transport corridors.",
-      "Mark impassable roadways with high-visibility physical barriers and GPS coordinates.",
-      "Deploy mechanical winch or earth-moving apparatus to establish single-lane clearance."
+      "Call 911 and local utility dispatch immediately; relay milepost and blocked ambulance routes via CERT net.",
+      "Establish high-visibility perimeter at least 35 feet from downed power lines and mudslide debris.",
+      "Reroute EMS and ambulance transport via cleared alternate state DOT / county arterial corridors."
     ],
     contraindications: [
-      "DO NOT drive across bridges or overpasses before structural engineer sign-off.",
-      "DO NOT cut fallen trees touching overhead electrical lines (assume lines are energized).",
-      "DO NOT divert traffic into secondary residential roads that lack turning radius for emergency vehicles."
+      "DO NOT approach within 35 feet of downed power lines—assume all overhead and ground lines are energized.",
+      "DO NOT attempt to clear mudslide boulders or trees entangled with utility lines without utility lockout."
     ],
-    broadcast_channel: "Logistics Corridor 7 (453.025 MHz)",
-    version: "2026.1-LOGISTICS-VETTED"
+    broadcast_channel: "DOT / Utility Ops Ch. 7 (453.025 MHz)",
+    version: "OSHA-FEMA-2026.2"
   }
 };
 
@@ -104,9 +96,8 @@ export const STATIC_SAFETY_PROTOCOLS: Record<HazardType, SafetyProtocolCard> = {
  */
 export async function getVettedProtocolCard(hazard: HazardType): Promise<SafetyProtocolCard> {
   const fallback = STATIC_SAFETY_PROTOCOLS[hazard];
-  
+
   try {
-    // Attempt dynamic Remote Config template lookup if online
     if (navigator.onLine) {
       await fetchAndActivate(remoteConfig);
       const customKey = `protocol_card_${hazard.toLowerCase()}`;
@@ -116,7 +107,6 @@ export async function getVettedProtocolCard(hazard: HazardType): Promise<SafetyP
       }
     }
   } catch (err) {
-    // Graceful offline fallback
     console.info("Using embedded static protocol card in offline dead zone:", err);
   }
 

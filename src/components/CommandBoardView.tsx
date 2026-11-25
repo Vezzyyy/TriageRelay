@@ -60,16 +60,16 @@ export const CommandBoardView: React.FC<CommandBoardViewProps> = ({
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-[13px] pb-[13px] border-b border-[#E0E0DA]">
         <div>
           <h1 className="text-[21px] tracking-[-0.02em] font-medium text-[#141517]">
-            Command Triage Board
+            County EOC Command Board
           </h1>
           <p className="text-[13px] text-[#54575F] mt-[3px]">
-            PII-scrubbed responder wire feed correlated with regional cloud grounding.
+            PII-scrubbed 911 / CERT field wire feed correlated with NWS alerts and DOT road advisories.
           </p>
         </div>
 
         {/* Concentric Fibonacci Filter Bar (8px outer, 3px pad, 5px inner) */}
         <div className="flex items-center gap-[8px]">
-          <span className="text-[12px] font-mono text-[#868991]">Severity</span>
+          <span className="text-[12px] font-mono text-[#868991]">911 / EMS Priority</span>
           <div className="flex items-center bg-[#ECECE7] p-[3px] rounded-[8px] border border-[#E0E0DA]/70">
             {["ALL", "CRITICAL", "URGENT", "STABLE"].map((sev) => (
               <button
@@ -196,13 +196,13 @@ export const CommandBoardView: React.FC<CommandBoardViewProps> = ({
           <div className="bg-white border border-[#E0E0DA] rounded-[13px] p-[21px] shadow-[0_1px_2px_rgba(0,0,0,0.03)] space-y-[13px]">
             <div className="flex items-center justify-between">
               <h2 className="text-[15px] font-medium text-[#141517]">
-                Regional Cloud Synthesis
+                EOC Cloud Synthesis
               </h2>
               <span className="text-[11px] font-mono text-[#254EDB]">only_in_cloud</span>
             </div>
 
             <p className="text-[12px] text-[#54575F] leading-relaxed">
-              Deduplicates overlapping field submissions across responders and enriches priority corridors with Google Search Grounding.
+              Correlates duplicate reports by county and highway corridor, grounding against NWS alerts, DOT closures, and Red Cross shelters.
             </p>
 
             <button

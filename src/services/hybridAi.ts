@@ -8,9 +8,10 @@ import type {
   ClusteredIncident
 } from "../types/triage";
 
-// Window AI / Chrome Gemini Nano interface types (supports Chrome v128+ and v139+)
 interface ChromeLanguageModel {
-  availability: () => Promise<"available" | "downloadable" | "downloading" | "unavailable" | "readily" | "after-download" | "no">;
+  availability: () => Promise<
+    "available" | "downloadable" | "downloading" | "unavailable" | "readily" | "after-download" | "no"
+  >;
   create: (options?: unknown) => Promise<{
     prompt: (input: string) => Promise<string>;
     destroy?: () => void;
@@ -26,9 +27,26 @@ declare global {
   }
 }
 
+const PROTECTED_PLACE_SUFFIXES = new Set([
+  "Apartments",
+  "Creek",
+  "Bridge",
+  "County",
+  "Center",
+  "Station",
+  "Clinic",
+  "Highway",
+  "Corridor",
+  "Street",
+  "Guard",
+  "Cross",
+  "Service"
+]);
+
 /**
- * Deterministic Regex Redactor for Victim PII (Emails, IDs, Phones, Proper Names)
- * Guarantees zero sensitive identifiers leave the edge device under any circumstances.
+ * Deterministic Regex Redactor for sensitive personal identifiers
+ * (Emails, SSNs, State/Driver IDs, Street Addresses, Phones, Proper Names).
+ * Keeps operational terms (911, CERT, FEMA, USAR, EMS) and highway corridors intact.
  */
 export function scrubPiiDeterministically(text: string): RedactionResult {
   const entities: RedactionResult["redactedEntities"] = [];
@@ -41,21 +59,44 @@ export function scrubPiiDeterministically(text: string): RedactionResult {
     return "[EMAIL_REDACTED]";
   });
 
-  // 2. National ID / Passport / Explicit ID Numbers (before phone numbers to avoid misclassifying digits)
-  const explicitNumericIdRegex = /\b(numéro national|national id|passport id|id)\s*:?\s*([A-Z0-9-]{6,14})\b/gi;
-  scrubbed = scrubbed.replace(explicitNumericIdRegex, (_match, label, idVal) => {
+  // 2. Social Security Numbers (runs before phones so 3-2-4 patterns map to SSN)
+  const ssnRegex = /\b\d{3}-\d{2}-\d{4}\b/g;
+  scrubbed = scrubbed.replace(ssnRegex, (match) => {
+    entities.push({ type: "SSN", matched: match });
+    return "[SSN_REDACTED]";
+  });
+
+  // 3. Driver's License, State ID, and Passport identifiers
+  const explicitIdRegex =
+    /\b(DL|Driver'?s?\s*License|State\s*ID|Passport\s*ID|numéro national|national id|id)\s*:?\s*([A-Z0-9-]{6,14})\b/gi;
+  scrubbed = scrubbed.replace(explicitIdRegex, (_match, label: string, idVal: string) => {
     entities.push({ type: "ID_NUMBER", matched: idVal });
     return `${label}: [ID_REDACTED]`.replace("::", ":");
   });
 
-  const idRegex = /\b([A-Z]{1,2}\d{6,9}|\d{3}-\d{2}-\d{4})\b/g;
-  scrubbed = scrubbed.replace(idRegex, (match) => {
+  const alphanumericIdRegex = /\b([A-Z]{1,2}\d{6,9})\b/g;
+  scrubbed = scrubbed.replace(alphanumericIdRegex, (match) => {
     entities.push({ type: "ID_NUMBER", matched: match });
     return "[ID_REDACTED]";
   });
 
-  // 3. Phone numbers (International & Local formats; ignores letters-prefixed codes)
-  const phoneRegex = /(?:^|[\s:(])((?:\+\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{2,4}[-.\s]?\d{2,4}(?:[-.\s]?\d{2,4})?)\b/g;
+  // 4. Personal street addresses and ZIP+4 (preserves highway designations like I-10, I-210, US-101)
+  const streetAddressRegex =
+    /\b\d{1,5}\s+(?:[NSEW]\.?\s+)?(?:[A-Za-z0-9]+\s+){1,3}(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Ter|Terrace|Cir|Circle|Pkwy|Parkway)\b\.?/g;
+  scrubbed = scrubbed.replace(streetAddressRegex, (match) => {
+    entities.push({ type: "ADDRESS", matched: match });
+    return "[ADDRESS_REDACTED]";
+  });
+
+  const zipPlusFourRegex = /\b\d{5}-\d{4}\b/g;
+  scrubbed = scrubbed.replace(zipPlusFourRegex, (match) => {
+    entities.push({ type: "ADDRESS", matched: match });
+    return "[ADDRESS_REDACTED]";
+  });
+
+  // 5. Phone numbers: (XXX) XXX-XXXX, XXX-XXX-XXXX, +1-XXX-XXX-XXXX, and international formats
+  const phoneRegex =
+    /(?:^|[\s:(])((?:\+\d{1,3}[-.\s]?)?(?:\(\d{3}\)|\d{2,4})[-.\s]?\d{3,4}[-.\s]?\d{4})\b/g;
   scrubbed = scrubbed.replace(phoneRegex, (fullMatch, numGroup: string) => {
     const digitCount = numGroup.replace(/\D/g, "").length;
     if (digitCount >= 7) {
@@ -65,11 +106,32 @@ export function scrubPiiDeterministically(text: string): RedactionResult {
     return fullMatch;
   });
 
-  // 4. Proper Names following honorifics or contact introductions (case-sensitive on capitalized words)
-  const nameIntroRegex = /\b(?:[Mm]y name is|[Vv]ictim is|[Pp]atient is|[Ww]itness contact:?|[Cc]ontact:?|Mr\.|Mrs\.|Ms\.|Dr\.|Mme)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/g;
+  // 6. Victim / caller proper names via introductions, honorifics, or parenthetical contact links
+  const nameIntroRegex =
+    /\b(?:[Mm]y name is|[Vv]ictim is|[Pp]atient is|[Rr]esident|[Nn]urse|[Ww]itness|[Cc]aller|[Cc]ontact(?:\s+(?:nurse|resident|doctor))?:?|Mr\.|Mrs\.|Ms\.|Dr\.|Mme)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g;
   scrubbed = scrubbed.replace(nameIntroRegex, (match, p1: string) => {
+    const lastWord = p1.split(/\s+/).pop() || "";
+    if (PROTECTED_PLACE_SUFFIXES.has(lastWord)) return match;
     entities.push({ type: "NAME", matched: p1 });
     return match.replace(p1, "[NAME_REDACTED]");
+  });
+
+  const parentheticalNameRegex =
+    /\b([A-Z][a-z]+\s+[A-Z][a-z]+)(?=\s*\((?:\+?\d|\[(?:PHONE|SSN|ID)_REDACTED\]))/g;
+  scrubbed = scrubbed.replace(parentheticalNameRegex, (match, p1: string) => {
+    const lastWord = p1.split(/\s+/).pop() || "";
+    if (PROTECTED_PLACE_SUFFIXES.has(lastWord)) return match;
+    entities.push({ type: "NAME", matched: p1 });
+    return "[NAME_REDACTED]";
+  });
+
+  const medicalPredicateNameRegex =
+    /\b([A-Z][a-z]+\s+[A-Z][a-z]+)(?=\s+(?:has|is|was|needs|reported|called)\b)/g;
+  scrubbed = scrubbed.replace(medicalPredicateNameRegex, (match, p1: string) => {
+    const lastWord = p1.split(/\s+/).pop() || "";
+    if (PROTECTED_PLACE_SUFFIXES.has(lastWord)) return match;
+    entities.push({ type: "NAME", matched: p1 });
+    return "[NAME_REDACTED]";
   });
 
   return {
@@ -113,10 +175,9 @@ export async function runLocalTriageInference(
 }> {
   const startTime = performance.now();
 
-  // Step 1: Enforce Hard Privacy Boundary (Deterministic Pre-Scrubbing)
+  // Enforce hard privacy boundary before any model execution
   const redaction = scrubPiiDeterministically(rawText);
 
-  // Step 2: Attempt on-device Gemini Nano inference via Firebase AI Logic
   let structuredData: {
     severity: SeverityLevel;
     hazard_type: HazardType;
@@ -135,7 +196,7 @@ Output strictly structured JSON adhering to this schema:
   "severity": "CRITICAL" | "URGENT" | "STABLE",
   "hazard_type": "STRUCTURAL_COLLAPSE" | "FLASH_FLOOD" | "MEDICAL_EMERGENCY" | "FIRE_HAZARD" | "BLOCKED_ACCESS",
   "people_affected": number or null,
-  "sector_hint": string (e.g. "Sector 4B", "North Bridge", "Downtown Market", or "Unknown"),
+  "sector_hint": string (corridor, city/county, or highway marker, e.g. "I-10 / Houston, TX" or "Pasadena, CA"),
   "scrubbed_summary": string (concise, factual summary with 0 personal identifiers)
 }
 CRITICAL SAFETY RULE: Never generate medical treatment advice. Output only hazard classification.
@@ -164,7 +225,6 @@ CRITICAL SAFETY RULE: Never generate medical treatment advice. Output only hazar
 
   try {
     if (nanoState === "READY") {
-      // Initialize Firebase AI Logic strictly for on-device execution
       const localModel: GenerativeModel = getGenerativeModel(ai, {
         mode: InferenceMode.ONLY_ON_DEVICE,
         onDeviceParams: {
@@ -176,7 +236,6 @@ CRITICAL SAFETY RULE: Never generate medical treatment advice. Output only hazar
 
       const promptParts: unknown[] = [systemPrompt, `\n\nREPORT TEXT: ${redaction.redactedText}`];
 
-      // Convert local image to inline base64 (kept strictly in browser memory)
       if (imageFile) {
         const base64Data = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -200,8 +259,6 @@ CRITICAL SAFETY RULE: Never generate medical treatment advice. Output only hazar
       const responseText = result.response.text();
       structuredData = JSON.parse(responseText);
     } else {
-      // Fallback: Deterministic offline rule-based parser
-      // Guarantees zero downtime in remote disaster areas even without Nano hardware
       structuredData = extractDeterministicTriage(redaction.redactedText);
     }
   } catch (err) {
@@ -234,7 +291,6 @@ CRITICAL SAFETY RULE: Never generate medical treatment advice. Output only hazar
 
 /**
  * Deterministic offline rule parser used if Gemini Nano is downloading or unavailable.
- * Ensures the emergency intake pipeline never halts.
  */
 function extractDeterministicTriage(text: string): {
   severity: SeverityLevel;
@@ -246,14 +302,37 @@ function extractDeterministicTriage(text: string): {
   const lower = text.toLowerCase();
 
   let hazard_type: HazardType = "STRUCTURAL_COLLAPSE";
-  if (lower.includes("flood") || lower.includes("inondation") || lower.includes("water") || lower.includes("drowning") || lower.includes("sayl")) {
+  if (
+    lower.includes("flood") ||
+    lower.includes("submerged") ||
+    lower.includes("creek") ||
+    lower.includes("river") ||
+    lower.includes("inondation") ||
+    lower.includes("water") ||
+    lower.includes("drowning")
+  ) {
     hazard_type = "FLASH_FLOOD";
-  } else if (lower.includes("fire") || lower.includes("feu") || lower.includes("smoke") || lower.includes("flames") || lower.includes("hariq")) {
-    hazard_type = "FIRE_HAZARD";
-  } else if (lower.includes("bleed") || lower.includes("injur") || lower.includes("bless") || lower.includes("casualt") || lower.includes("unconscious") || lower.includes("marid")) {
-    hazard_type = "MEDICAL_EMERGENCY";
-  } else if (lower.includes("blocked") || lower.includes("road") || lower.includes("rubble") || lower.includes("route") || lower.includes("barricad") || lower.includes("tariq")) {
+  } else if (
+    lower.includes("blocked") ||
+    lower.includes("blocking") ||
+    lower.includes("mudslide") ||
+    lower.includes("landslide") ||
+    lower.includes("power line") ||
+    lower.includes("cut off") ||
+    lower.includes("rubble") ||
+    lower.includes("road")
+  ) {
     hazard_type = "BLOCKED_ACCESS";
+  } else if (lower.includes("wildfire") || lower.includes("fire") || lower.includes("smoke") || lower.includes("flames")) {
+    hazard_type = "FIRE_HAZARD";
+  } else if (
+    lower.includes("bleed") ||
+    lower.includes("laceration") ||
+    lower.includes("injur") ||
+    lower.includes("casualt") ||
+    lower.includes("unconscious")
+  ) {
+    hazard_type = "MEDICAL_EMERGENCY";
   }
 
   let severity: SeverityLevel = "URGENT";
@@ -261,28 +340,46 @@ function extractDeterministicTriage(text: string): {
     lower.includes("trapped") ||
     lower.includes("unconscious") ||
     lower.includes("bleeding heavily") ||
+    lower.includes("laceration") ||
+    lower.includes("stranded") ||
+    lower.includes("submerged") ||
     lower.includes("collapse") ||
-    lower.includes("immediate") ||
-    lower.includes("mort") ||
-    lower.includes("danger de mort") ||
-    lower.includes("submerg")
+    lower.includes("immediate")
   ) {
     severity = "CRITICAL";
-  } else if (lower.includes("minor") || lower.includes("stable") || lower.includes("standing by") || lower.includes("calm")) {
+  } else if (lower.includes("minor") || lower.includes("stable") || lower.includes("standing by")) {
     severity = "STABLE";
   }
 
   let people_affected: number | null = null;
-  const numMatch = text.match(/(\d+)\s*(people|persons|victims|casualties|personnes|individus|blesses)/i);
+  const numMatch = text.match(
+    /(\d+)\s*(people|persons|children|victims|casualties|residents|occupants|patients|stranded|trapped)/i
+  );
   if (numMatch && numMatch[1]) {
     people_affected = parseInt(numMatch[1], 10);
   }
 
-  let sector_hint = "Zone Alpha";
-  const sectorMatch = text.match(/(sector|zone|district|rue|quartier|hayy|highway)\s*([A-Za-z0-9-]+)/i);
-  if (sectorMatch) {
-    sector_hint = `${sectorMatch[1]} ${sectorMatch[2]}`;
+  // Extract highway corridor + city/state sector hint
+  const highwayMatch = text.match(/\b(I-\d+|US-\d+|SR-\d+|Highway\s+[A-Z0-9-]+)\b/i);
+  const milepostMatch = text.match(/\b(?:Milepost|MP)[-\s]*(\d+)\b/i);
+  const cityStateMatch = text.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?,\s*[A-Z]{2})\b/);
+
+  const hintParts: string[] = [];
+  if (highwayMatch) {
+    const hwy = highwayMatch[1].replace(/^Highway\s+/i, "");
+    hintParts.push(milepostMatch ? `${hwy} MP-${milepostMatch[1]}` : hwy);
   }
+  if (cityStateMatch) {
+    hintParts.push(cityStateMatch[1]);
+  }
+  if (hintParts.length === 0) {
+    const sectorMatch = text.match(/(sector|zone|district|corridor)\s*([A-Za-z0-9-]+)/i);
+    if (sectorMatch) {
+      hintParts.push(`${sectorMatch[1]} ${sectorMatch[2]}`);
+    }
+  }
+
+  const sector_hint = hintParts.length > 0 ? hintParts.join(" · ") : "Sector Alpha";
 
   return {
     severity,
@@ -312,10 +409,10 @@ export async function runCloudCommandSynthesis(
   }));
 
   const prompt = `
-You are Regional Disaster Incident Commander synthesizing field triage reports.
-Cluster the following sanitized incident reports into distinct physical incidents.
-Combine duplicate reports from multiple responders describing the same hazard/sector.
-Ground your response with live disaster recovery protocols.
+You are a County Emergency Operations Center (EOC) / Incident Command analyst synthesizing field triage reports.
+Cluster the following sanitized incident reports into distinct physical incidents grouped by county or highway corridor.
+Combine duplicate reports from multiple responders describing the same hazard/corridor.
+Ground your briefing against active National Weather Service (NWS) alerts, Caltrans / state DOT road closures, and local Red Cross shelter advisories.
 
 REPORTS:
 ${JSON.stringify(sanitizedReports, null, 2)}
@@ -329,15 +426,14 @@ Respond with a JSON array of clustered incidents:
     "sector": "string",
     "corroborating_reports": ["rep_id1", "rep_id2"],
     "total_people_affected": number,
-    "synthetic_briefing": "string with concise situational briefing",
-    "grounded_context": "string with road/weather/shelter operational notes",
+    "synthetic_briefing": "string with concise EOC situational briefing",
+    "grounded_context": "string citing NWS alerts, DOT highway closures, and shelter advisories",
     "citations": [{"title": "string", "uri": "string"}]
   }
 ]
 `.trim();
 
   try {
-    // Configure in-cloud model properly via inCloudParams as required by Firebase AI HybridParams
     const cloudModel: GenerativeModel = getGenerativeModel(ai, {
       mode: InferenceMode.ONLY_IN_CLOUD,
       inCloudParams: {
@@ -358,12 +454,16 @@ Respond with a JSON array of clustered incidents:
       cluster_id: item.cluster_id || `cluster-${Date.now()}-${idx}`,
       hazard_type: item.hazard_type || "STRUCTURAL_COLLAPSE",
       severity: item.severity || "CRITICAL",
-      sector: item.sector || "General Sector",
+      sector: item.sector || "Regional Sector",
       corroborating_reports: item.corroborating_reports || [],
       total_people_affected: item.total_people_affected || 0,
       synthetic_briefing: item.synthetic_briefing || "Incident corroborated across field responders.",
-      grounded_context: item.grounded_context || "Active regional emergency monitoring in progress.",
-      citations: item.citations || [{ title: "Civil Protection Protocol", uri: "https://disaster-response.gov" }],
+      grounded_context:
+        item.grounded_context ||
+        "Monitoring active NWS weather advisories, state DOT corridor closures, and Red Cross shelter capacity.",
+      citations: item.citations || [
+        { title: "NWS & DOT Corridor Advisory", uri: "https://www.weather.gov" }
+      ],
       timestamp: new Date().toISOString()
     }));
   } catch (err) {
@@ -373,7 +473,7 @@ Respond with a JSON array of clustered incidents:
 }
 
 /**
- * Local deterministic incident clustering for offline Command Board operation
+ * Local deterministic incident clustering for offline EOC Command Board operation
  */
 function fallbackLocalClustering(reports: TriageReport[]): ClusteredIncident[] {
   const groups = new Map<string, TriageReport[]>();
@@ -399,10 +499,11 @@ function fallbackLocalClustering(reports: TriageReport[]): ClusteredIncident[] {
       sector: primary.sector_hint,
       corroborating_reports: reps.map((r) => r.report_id),
       total_people_affected: totalAffected,
-      synthetic_briefing: `${reps.length} corroborating field report(s) confirm ${primary.hazard_type.replace(/_/g, " ").toLowerCase()} at ${primary.sector_hint}. Priority evacuation corridor advised.`,
-      grounded_context: "Grounding: Local cluster verified from field mesh transmissions. Route clearance underway.",
+      synthetic_briefing: `${reps.length} corroborating field report(s) confirm ${primary.hazard_type.replace(/_/g, " ").toLowerCase()} at ${primary.sector_hint}. Priority 911 / EMS dispatch advised.`,
+      grounded_context:
+        "EOC Grounding: Corroborated via responder mesh. Pending live NWS weather feed, state DOT closure confirmation, and Red Cross shelter routing.",
       citations: [
-        { title: "Civil Protection Protocol", uri: "https://emergency.local/protocols" }
+        { title: "FEMA & NWS Emergency Reference", uri: "https://www.ready.gov" }
       ],
       timestamp: new Date().toISOString()
     });

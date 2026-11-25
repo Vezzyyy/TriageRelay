@@ -209,7 +209,7 @@ export const FieldIntakeView: React.FC<FieldIntakeViewProps> = ({
                 Eyewitness Report
               </label>
               <span className="text-[11px] font-mono text-[#868991]">
-                EN / FR / AR
+                Multilingual · 911 / CERT
               </span>
             </div>
             <textarea

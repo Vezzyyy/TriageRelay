@@ -41,14 +41,14 @@ flowchart TD
 ```
 
 ### 1. Edge Field Intake (`ONLY_ON_DEVICE` via Chrome Gemini Nano)
-- **Zero Cloud Leak:** Takes disaster photos (JPEG/PNG) and multilingual text (English, French, Arabic) 100% offline.
-- **Deterministic + AI PII Redaction:** Phone numbers, emails, victim names, and national IDs are scrubbed locally.
+- **Zero Cloud Leak:** Takes disaster photos (JPEG/PNG) and unstructured eyewitness reports 100% offline.
+- **Deterministic + AI PII Redaction:** Phone numbers, Social Security Numbers, street addresses, emails, driver's licenses, and victim names are scrubbed locally while keeping highway corridors intact.
 - **Strict Structured JSON Schema:** Outputs typed triage classifications without free-form hallucinated medical advice.
-- **Vetted Protocol Cards:** Maps the classified hazard type directly to curated safety instructions controlled via **Firebase Remote Config**.
+- **Vetted Protocol Cards:** Maps the classified hazard type directly to curated FEMA / CERT / NWS / OSHA safety checklists controlled via **Firebase Remote Config**.
 
-### 2. Regional Command Synthesis (`ONLY_IN_CLOUD` via `gemini-2.5-flash`)
-- **Corroborates Multi-Source Incidents:** Groups duplicate reports describing the same incident across responders (e.g., *"3 sources corroborating collapsed bridge at Sector N9"*).
-- **Google Search Grounding:** Augments situational briefs with live weather, river crest rates, and verified relief citations.
+### 2. County EOC Command Synthesis (`ONLY_IN_CLOUD` via `gemini-2.5-flash`)
+- **Corroborates Multi-Source Incidents:** Groups duplicate reports describing the same incident across responders by county and highway corridor.
+- **Google Search Grounding:** Augments situational briefs against live NWS alerts, state DOT road closures, and Red Cross shelter advisories.
 
 ---
 
@@ -56,20 +56,20 @@ flowchart TD
 
 | Firebase Service | Purpose in TriageRelay | Runtime Implementation |
 | :--- | :--- | :--- |
-| **Firebase AI Logic (`firebase/ai`)** | Dual Hybrid Inference Engine | `getGenerativeModel(ai, { mode: "only_on_device", generationConfig: { responseMimeType: "application/json" } })` for edge intake, and `getGenerativeModel(ai, { mode: "only_in_cloud", model: "gemini-2.5-flash", tools: [{ googleSearch: {} }] })` for command synthesis. |
+| **Firebase AI Logic (`firebase/ai`)** | Dual Hybrid Inference Engine | `getGenerativeModel(ai, { mode: InferenceMode.ONLY_ON_DEVICE, onDeviceParams: ... })` for edge intake, and `getGenerativeModel(ai, { mode: InferenceMode.ONLY_IN_CLOUD, inCloudParams: { model: "gemini-2.5-flash", tools: [{ googleSearch: {} }] } })` for command synthesis. |
 | **Cloud Firestore** | Offline-First Data Store | Configured with `persistentLocalCache({ tabManager: persistentMultipleTabManager() })` to buffer reports in dead zones and auto-sync to `SYNCED` when online. |
 | **Firebase Remote Config** | Dynamic Safety Protocols | Fetches `active_disaster_protocol` (`EARTHQUAKE` vs `FLASH_FLOOD`) and vetted safety cards without redeploying code. |
-| **Firebase App Check** | Anti-Abuse & Cloud Protection | Initialized with `ReCaptchaEnterpriseProvider` and `self.FIREBASE_APPCHECK_DEBUG_TOKEN = true` for compliant evaluation. |
+| **Firebase App Check** | Anti-Abuse & Cloud Protection | Initialized with `ReCaptchaEnterpriseProvider` and `FIREBASE_APPCHECK_DEBUG_TOKEN = true` for compliant evaluation. |
 | **Firebase Auth** | Zero-Friction Responder ID | Silent `signInAnonymously(auth)` on startup to authenticate edge reports instantly. |
 
 ---
 
-## 1-Click Realistic Disaster Scenarios (For Judges)
+## 1-Click Realistic Disaster Scenarios
 
-The app includes 3 realistic pre-configured scenarios directly in the `/field` view for instant testing:
-1. **Scenario 1 (Earthquake / Entrapment):** Multilingual residential collapse with trapped victims and gas leaks.
-2. **Scenario 2 (Flash Flood):** French eyewitness report with submerged bridge, casualty counts, and contact IDs.
-3. **Scenario 3 (Mountain Rockslide):** Arabic/English mountain pass obstruction blocking ambulance routes.
+The app includes 3 realistic pre-configured scenarios directly in the Field Intake view for instant testing:
+1. **01 Collapse (Pasadena, CA — I-210 Corridor):** Partial residential pancake collapse with trapped occupants, gas odor, phone number, street address, and SSN.
+2. **02 Flash Flood (Houston, TX — I-10 / Cypress Creek):** Submerged highway access bridge with stranded motorists, deep laceration, and busy 911 circuits.
+3. **03 Route Block (Eureka, CA — US-101 MP-42):** Downed high-voltage power lines and mudslide blocking ambulance access along a mountain corridor.
 
 ---
 

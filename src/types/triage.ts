@@ -31,7 +31,7 @@ export interface RedactionResult {
   originalText: string;
   redactedText: string;
   redactedEntities: Array<{
-    type: "PHONE" | "EMAIL" | "NAME" | "ID_NUMBER" | "LOCATION_DETAIL";
+    type: "PHONE" | "SSN" | "EMAIL" | "NAME" | "ID_NUMBER" | "ADDRESS" | "LOCATION_DETAIL";
     matched: string;
   }>;
 }
