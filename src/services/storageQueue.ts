@@ -2,6 +2,8 @@ import {
   collection, 
   doc, 
   setDoc, 
+  deleteDoc,
+  getDocs,
   onSnapshot, 
   query, 
   orderBy, 
@@ -11,6 +13,23 @@ import { db } from "../lib/firebase";
 import type { TriageReport } from "../types/triage";
 
 const LOCAL_STORAGE_KEY = "triagerelay_offline_reports_v1";
+
+/**
+ * Completely purges all local and remote reports (clean slate)
+ */
+export async function clearAllReports(): Promise<void> {
+  try {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    if (navigator.onLine) {
+      const reportsCollection = collection(db, "triage_reports");
+      const snapshot = await getDocs(reportsCollection);
+      const deletePromises = snapshot.docs.map(d => deleteDoc(doc(db, "triage_reports", d.id)));
+      await Promise.all(deletePromises);
+    }
+  } catch (err) {
+    console.error("Failed to clear reports:", err);
+  }
+}
 
 /**
  * Loads cached reports from local browser storage

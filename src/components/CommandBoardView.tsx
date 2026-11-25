@@ -10,7 +10,8 @@ import {
   AlertOctagon, 
   ShieldCheck, 
   Filter,
-  BookOpen
+  BookOpen,
+  Trash2
 } from "lucide-react";
 import { runCloudCommandSynthesis } from "../services/hybridAi";
 import type { TriageReport, ClusteredIncident } from "../types/triage";
@@ -19,12 +20,14 @@ interface CommandBoardViewProps {
   reports: TriageReport[];
   onToggleVerifyReport: (reportId: string) => void;
   onIncrementCloudCount: () => void;
+  onClearDatabase: () => void;
 }
 
 export const CommandBoardView: React.FC<CommandBoardViewProps> = ({
   reports,
   onToggleVerifyReport,
-  onIncrementCloudCount
+  onIncrementCloudCount,
+  onClearDatabase
 }) => {
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [clusters, setClusters] = useState<ClusteredIncident[]>([]);
@@ -70,24 +73,42 @@ export const CommandBoardView: React.FC<CommandBoardViewProps> = ({
           </p>
         </div>
 
-        {/* Synthesis CTA */}
-        <button
-          onClick={handleRunSynthesis}
-          disabled={isSynthesizing || reports.length === 0}
-          className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-mono font-bold text-xs uppercase tracking-wider transition-all shadow-lg flex items-center gap-2 shrink-0"
-        >
-          {isSynthesizing ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Correlating with Gemini 2.5 Flash...
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4 text-cyan-300" />
-              Cluster Incidents & Run Grounded Briefing
-            </>
+        {/* Synthesis & Reset CTAs */}
+        <div className="flex items-center gap-2">
+          {reports.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm("Purge all reports from local cache and Cloud Firestore?")) {
+                  onClearDatabase();
+                  setClusters([]);
+                }
+              }}
+              className="px-3 py-2.5 rounded-lg bg-slate-800 hover:bg-rose-950 border border-slate-700 hover:border-rose-700 text-slate-300 hover:text-rose-300 font-mono text-xs uppercase tracking-wider transition-all flex items-center gap-1.5"
+              title="Wipe database and start clean"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Reset DB
+            </button>
           )}
-        </button>
+
+          <button
+            onClick={handleRunSynthesis}
+            disabled={isSynthesizing || reports.length === 0}
+            className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-mono font-bold text-xs uppercase tracking-wider transition-all shadow-lg flex items-center gap-2 shrink-0"
+          >
+            {isSynthesizing ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Correlating with Gemini 2.5 Flash...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 text-cyan-300" />
+                Cluster Incidents & Run Grounded Briefing
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Synthesis Clusters Section (If Available) */}

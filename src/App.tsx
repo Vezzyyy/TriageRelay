@@ -12,7 +12,8 @@ import {
 import { 
   subscribeToTriageReports, 
   flushOfflineQueue, 
-  saveLocalCachedReports 
+  saveLocalCachedReports,
+  clearAllReports 
 } from "./services/storageQueue";
 import type { TriageReport, TelemetryState } from "./types/triage";
 
@@ -96,6 +97,12 @@ export function App() {
     saveLocalCachedReports(updated);
   };
 
+  const handleClearDatabase = async () => {
+    await clearAllReports();
+    setReports([]);
+    setTelemetry((prev) => ({ ...prev, reportsTriagedLocally: 0, cloudCallsCount: 0 }));
+  };
+
   const handleIncrementEdgeCount = () => {
     setTelemetry((prev) => ({
       ...prev,
@@ -137,6 +144,7 @@ export function App() {
             reports={reports}
             onToggleVerifyReport={handleToggleVerifyReport}
             onIncrementCloudCount={handleIncrementCloudCount}
+            onClearDatabase={handleClearDatabase}
           />
         )}
       </main>
