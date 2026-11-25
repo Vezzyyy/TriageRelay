@@ -23,6 +23,7 @@ export const DispatchPage: React.FC<DispatchPageProps> = ({
 }) => {
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [clusters, setClusters] = useState<ClusteredIncident[]>([]);
+  const [synthesisMode, setSynthesisMode] = useState<"CLOUD_GROUNDED" | "CLOUD" | "LOCAL_FALLBACK">("CLOUD_GROUNDED");
   const [filterSeverity, setFilterSeverity] = useState<string>("ALL");
 
   const handleRunSynthesis = async () => {
@@ -30,8 +31,9 @@ export const DispatchPage: React.FC<DispatchPageProps> = ({
     setIsSynthesizing(true);
 
     try {
-      const generatedClusters = await runCloudCommandSynthesis(reports);
-      setClusters(generatedClusters);
+      const result = await runCloudCommandSynthesis(reports);
+      setClusters(result.clusters);
+      setSynthesisMode(result.mode);
     } catch (err) {
       console.error("Failed to generate briefing:", err);
     } finally {
@@ -181,9 +183,23 @@ export const DispatchPage: React.FC<DispatchPageProps> = ({
               <h2 className="text-[15px] font-medium text-[#141517]">
                 Situational Briefing
               </h2>
-              <span className="inline-flex items-center gap-[5px] px-[8px] py-[3px] rounded-[3px] text-[11px] font-mono bg-[#EEF2FF] border border-[#C7D2FE] text-[#254EDB]">
-                <span className="inline-block w-[5px] h-[5px] rounded-full bg-[#254EDB]" />
-                Cloud · Gemini 2.5 Flash + Search Grounding
+              <span
+                className={`inline-flex items-center gap-[5px] px-[8px] py-[3px] rounded-[3px] text-[11px] font-mono border ${
+                  synthesisMode === "LOCAL_FALLBACK"
+                    ? "bg-[#F5F5F2] border-[#E0E0DA] text-[#54575F]"
+                    : "bg-[#EEF2FF] border-[#C7D2FE] text-[#254EDB]"
+                }`}
+              >
+                <span
+                  className={`inline-block w-[5px] h-[5px] rounded-full ${
+                    synthesisMode === "LOCAL_FALLBACK" ? "bg-[#54575F]" : "bg-[#254EDB]"
+                  }`}
+                />
+                {synthesisMode === "CLOUD_GROUNDED"
+                  ? "Cloud · Gemini 3.8 Flash + Search Grounding"
+                  : synthesisMode === "CLOUD"
+                  ? "Cloud · Gemini 3.8 Flash · Live"
+                  : "Local Mesh · Offline Clustering"}
               </span>
             </div>
 

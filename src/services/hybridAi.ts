@@ -405,8 +405,14 @@ function extractDeterministicTriage(text: string): {
  */
 export async function runCloudCommandSynthesis(
   reports: TriageReport[]
-): Promise<ClusteredIncident[]> {
-  if (reports.length === 0) return [];
+): Promise<{
+  clusters: ClusteredIncident[];
+  mode: "CLOUD_GROUNDED" | "CLOUD" | "LOCAL_FALLBACK";
+  modelName: string;
+}> {
+  if (reports.length === 0) {
+    return { clusters: [], mode: "CLOUD", modelName: "gemini-3.8-flash" };
+  }
 
   const sanitizedReports = reports.map((r) => ({
     id: r.report_id,
@@ -442,11 +448,42 @@ Respond with a JSON array of clustered incidents:
 ]
 `.trim();
 
+  const modelName = "gemini-3.8-flash";
+
+  const parseClusterArray = (rawText: string, groundingChunks?: Array<{ web?: { title?: string; uri?: string } }>): ClusteredIncident[] => {
+    const cleaned = rawText.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+    const parsed = JSON.parse(cleaned);
+    const liveCitations = (groundingChunks || [])
+      .filter((c) => c.web?.uri)
+      .map((c) => ({ title: c.web?.title || "Grounded Reference", uri: c.web!.uri! }));
+
+    return parsed.map((item: any, idx: number) => ({
+      cluster_id: item.cluster_id || `cluster-${Date.now()}-${idx}`,
+      hazard_type: item.hazard_type || "STRUCTURAL_COLLAPSE",
+      severity: item.severity || "CRITICAL",
+      sector: item.sector || "Regional Sector",
+      corroborating_reports: item.corroborating_reports || [],
+      total_people_affected: item.total_people_affected ?? 0,
+      synthetic_briefing: item.synthetic_briefing || "Incident corroborated across field responders.",
+      grounded_context:
+        item.grounded_context ||
+        "Monitoring active NWS weather advisories, state DOT corridor closures, and Red Cross shelter capacity.",
+      citations:
+        liveCitations.length > 0
+          ? liveCitations
+          : item.citations?.length
+          ? item.citations
+          : [{ title: "NWS & DOT Corridor Advisory", uri: "https://www.weather.gov" }],
+      timestamp: new Date().toISOString()
+    }));
+  };
+
+  // Attempt 1: Live Cloud Gemini 3.8 Flash with Google Search Grounding (if Search Grounding quota is provisioned)
   try {
-    const cloudModel: GenerativeModel = getGenerativeModel(ai, {
+    const groundedModel: GenerativeModel = getGenerativeModel(ai, {
       mode: InferenceMode.ONLY_IN_CLOUD,
       inCloudParams: {
-        model: "gemini-2.5-flash",
+        model: modelName,
         tools: [{ googleSearch: {} }] as any,
         generationConfig: {
           responseMimeType: "application/json",
@@ -455,29 +492,43 @@ Respond with a JSON array of clustered incidents:
       }
     });
 
-    const result = await cloudModel.generateContent(prompt);
-    const text = result.response.text();
-    const parsed = JSON.parse(text);
+    const result = await groundedModel.generateContent(prompt);
+    const groundingChunks = (result.response as any)?.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    return {
+      clusters: parseClusterArray(result.response.text(), groundingChunks),
+      mode: "CLOUD_GROUNDED",
+      modelName
+    };
+  } catch (searchErr) {
+    console.info("Search Grounding quota unavailable on Spark tier, retrying direct Cloud Gemini synthesis:", searchErr);
+  }
 
-    return parsed.map((item: any, idx: number) => ({
-      cluster_id: item.cluster_id || `cluster-${Date.now()}-${idx}`,
-      hazard_type: item.hazard_type || "STRUCTURAL_COLLAPSE",
-      severity: item.severity || "CRITICAL",
-      sector: item.sector || "Regional Sector",
-      corroborating_reports: item.corroborating_reports || [],
-      total_people_affected: item.total_people_affected || 0,
-      synthetic_briefing: item.synthetic_briefing || "Incident corroborated across field responders.",
-      grounded_context:
-        item.grounded_context ||
-        "Monitoring active NWS weather advisories, state DOT corridor closures, and Red Cross shelter capacity.",
-      citations: item.citations || [
-        { title: "NWS & DOT Corridor Advisory", uri: "https://www.weather.gov" }
-      ],
-      timestamp: new Date().toISOString()
-    }));
+  // Attempt 2: Live Cloud Gemini 3.8 Flash (ONLY_IN_CLOUD, Spark free-tier compatible)
+  try {
+    const cloudModel: GenerativeModel = getGenerativeModel(ai, {
+      mode: InferenceMode.ONLY_IN_CLOUD,
+      inCloudParams: {
+        model: modelName,
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.2
+        }
+      }
+    });
+
+    const result = await cloudModel.generateContent(prompt);
+    return {
+      clusters: parseClusterArray(result.response.text()),
+      mode: "CLOUD",
+      modelName
+    };
   } catch (err) {
     console.warn("Cloud synthesis fell back to local cluster aggregation:", err);
-    return fallbackLocalClustering(reports);
+    return {
+      clusters: fallbackLocalClustering(reports),
+      mode: "LOCAL_FALLBACK",
+      modelName
+    };
   }
 }
 

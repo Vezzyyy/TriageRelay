@@ -32,7 +32,7 @@ flowchart TD
         F -->|Auto-Flushed on Reconnect| G[(Cloud Firestore)]
     end
 
-    subgraph Command ["Regional Command Synthesis (Gemini 2.5 Flash + Search)"]
+    subgraph Command ["Regional Command Synthesis (Gemini 3.8 Flash)"]
         G --> H[Firebase AI Logic\nmode: 'only_in_cloud']
         H --> I[Cross-Responder Incident Clustering\nCorroborates Duplicate Reports]
         H --> J[Google Search Grounding\nLive Weather / Roads / Shelters]
@@ -46,7 +46,7 @@ flowchart TD
 - **Strict Structured JSON Schema:** Outputs typed triage classifications without free-form hallucinated medical advice.
 - **Vetted Protocol Cards:** Maps the classified hazard type directly to curated FEMA / CERT / NWS / OSHA safety checklists controlled via **Firebase Remote Config**.
 
-### 2. County EOC Command Synthesis (`ONLY_IN_CLOUD` via `gemini-2.5-flash`)
+### 2. County EOC Command Synthesis (`ONLY_IN_CLOUD` via `gemini-3.8-flash`)
 - **Corroborates Multi-Source Incidents:** Groups duplicate reports describing the same incident across responders by county and highway corridor.
 - **Google Search Grounding:** Augments situational briefs against live NWS alerts, state DOT road closures, and Red Cross shelter advisories.
 
@@ -56,7 +56,7 @@ flowchart TD
 
 | Firebase Service | Purpose in TriageRelay | Runtime Implementation |
 | :--- | :--- | :--- |
-| **Firebase AI Logic (`firebase/ai`)** | Dual Hybrid Inference Engine | `getGenerativeModel(ai, { mode: InferenceMode.ONLY_ON_DEVICE, onDeviceParams: ... })` for edge intake, and `getGenerativeModel(ai, { mode: InferenceMode.ONLY_IN_CLOUD, inCloudParams: { model: "gemini-2.5-flash", tools: [{ googleSearch: {} }] } })` for command synthesis. |
+| **Firebase AI Logic (`firebase/ai`)** | Dual Hybrid Inference Engine | `getGenerativeModel(ai, { mode: InferenceMode.ONLY_ON_DEVICE, onDeviceParams: ... })` for edge intake, and `getGenerativeModel(ai, { mode: InferenceMode.ONLY_IN_CLOUD, inCloudParams: { model: "gemini-3.8-flash", tools: [{ googleSearch: {} }] } })` for command synthesis. |
 | **Cloud Firestore** | Offline-First Data Store | Configured with `persistentLocalCache({ tabManager: persistentMultipleTabManager() })` to buffer reports in dead zones and auto-sync to `SYNCED` when online. |
 | **Firebase Remote Config** | Dynamic Safety Protocols | Fetches `active_disaster_protocol` (`EARTHQUAKE` vs `FLASH_FLOOD`) and vetted safety cards without redeploying code. |
 | **Firebase App Check** | Anti-Abuse & Cloud Protection | Initialized with `ReCaptchaEnterpriseProvider` and `FIREBASE_APPCHECK_DEBUG_TOKEN = true` for compliant evaluation. |
