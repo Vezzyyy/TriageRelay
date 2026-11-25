@@ -177,9 +177,15 @@ export const DispatchPage: React.FC<DispatchPageProps> = ({
         {/* SPIRAL BLOCK 5 -> 3 -> 2 -> 1: Situational Briefing & Controls */}
         <aside className="space-y-[13px]">
           <div className="bg-white border border-[#E0E0DA] rounded-[13px] p-[21px] shadow-[0_1px_2px_rgba(0,0,0,0.03)] space-y-[13px]">
-            <h2 className="text-[15px] font-medium text-[#141517]">
-              Situational Briefing
-            </h2>
+            <div className="space-y-[8px]">
+              <h2 className="text-[15px] font-medium text-[#141517]">
+                Situational Briefing
+              </h2>
+              <span className="inline-flex items-center gap-[5px] px-[8px] py-[3px] rounded-[3px] text-[11px] font-mono bg-[#EEF2FF] border border-[#C7D2FE] text-[#254EDB]">
+                <span className="inline-block w-[5px] h-[5px] rounded-full bg-[#254EDB]" />
+                Cloud · Gemini 2.5 Flash + Search Grounding
+              </span>
+            </div>
 
             <button
               onClick={handleRunSynthesis}

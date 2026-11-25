@@ -131,9 +131,9 @@ export function subscribeToTriageReports(
         liveReports.push(docSnap.data() as TriageReport);
       });
 
-      // Merge local un-synced items with cloud items
+      // Preserve only genuinely unsynced offline reports alongside Firestore state
       const localOnly = getLocalCachedReports().filter(
-        loc => !liveReports.some(rem => rem.report_id === loc.report_id)
+        loc => loc.sync_status === "QUEUED_OFFLINE" && !liveReports.some(rem => rem.report_id === loc.report_id)
       );
 
       const merged = [...localOnly, ...liveReports];

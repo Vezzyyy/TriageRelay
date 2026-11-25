@@ -172,6 +172,7 @@ export async function runLocalTriageInference(
   redaction: RedactionResult;
   latencyMs: number;
   source: "LOCAL_GEMINI_NANO";
+  usedNano: boolean;
 }> {
   const startTime = performance.now();
 
@@ -185,6 +186,7 @@ export async function runLocalTriageInference(
     sector_hint: string;
     scrubbed_summary: string;
   };
+  let usedNano = false;
 
   const nanoState = await checkGeminiNanoAvailability();
 
@@ -258,6 +260,7 @@ CRITICAL SAFETY RULE: Never generate medical treatment advice. Output only hazar
       const result = await localModel.generateContent(promptParts as any);
       const responseText = result.response.text();
       structuredData = JSON.parse(responseText);
+      usedNano = true;
     } else {
       structuredData = extractDeterministicTriage(redaction.redactedText);
     }
@@ -285,7 +288,8 @@ CRITICAL SAFETY RULE: Never generate medical treatment advice. Output only hazar
     report,
     redaction,
     latencyMs,
-    source: "LOCAL_GEMINI_NANO"
+    source: "LOCAL_GEMINI_NANO",
+    usedNano
   };
 }
 

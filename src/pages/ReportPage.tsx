@@ -10,6 +10,7 @@ import {
   Navigation,
   ShieldAlert
 } from "lucide-react";
+import { SAMPLE_DISASTER_SCENARIOS, type DisasterScenario } from "../data/sampleScenarios";
 import { runLocalTriageInference } from "../services/hybridAi";
 import { submitTriageReport } from "../services/storageQueue";
 import { getVettedProtocolCard } from "../services/remoteConfigService";
@@ -29,18 +30,28 @@ export const ReportPage: React.FC<ReportPageProps> = ({
   const [reportText, setReportText] = useState("");
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastResult, setLastResult] = useState<{
     report: TriageReport;
     redaction: RedactionResult;
     protocolCard: SafetyProtocolCard;
+    usedNano: boolean;
   } | null>(null);
 
   const hasInput = Boolean(reportText.trim() || selectedImage || imagePreviewUrl);
 
+  const handleLoadSample = (scen: DisasterScenario) => {
+    setActiveScenarioId(scen.id);
+    setReportText(scen.raw_text);
+    setImagePreviewUrl(scen.image_url);
+    setSelectedImage(null);
+  };
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      setActiveScenarioId(null);
       setSelectedImage(file);
       setImagePreviewUrl(URL.createObjectURL(file));
     }
@@ -54,7 +65,7 @@ export const ReportPage: React.FC<ReportPageProps> = ({
     try {
       const effectiveText =
         reportText.trim() || "Damage photograph attached for assessment.";
-      const { report, redaction } = await runLocalTriageInference(
+      const { report, redaction, usedNano } = await runLocalTriageInference(
         effectiveText,
         selectedImage
       );
@@ -69,13 +80,15 @@ export const ReportPage: React.FC<ReportPageProps> = ({
       setLastResult({
         report: finalReport,
         redaction,
-        protocolCard
+        protocolCard,
+        usedNano
       });
 
       onReportSubmitted(finalReport);
       setReportText("");
       setSelectedImage(null);
       setImagePreviewUrl(null);
+      setActiveScenarioId(null);
     } catch (err) {
       console.error("Failed to submit incident report:", err);
     } finally {
@@ -102,10 +115,30 @@ export const ReportPage: React.FC<ReportPageProps> = ({
 
   return (
     <div className="max-w-[1360px] mx-auto px-[21px] py-[21px] space-y-[21px]">
-      <div className="pb-[13px] border-b border-[#E0E0DA]">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-[13px] pb-[13px] border-b border-[#E0E0DA]">
         <h1 className="text-[21px] tracking-[-0.02em] font-medium text-[#141517]">
           Report Incident
         </h1>
+
+        <div className="flex flex-wrap items-center gap-[8px]">
+          <span className="text-[12px] font-mono text-[#868991]">Try sample:</span>
+          <div className="flex items-center bg-[#ECECE7] p-[3px] rounded-[8px] border border-[#E0E0DA]/70">
+            {SAMPLE_DISASTER_SCENARIOS.map((scen) => (
+              <button
+                key={scen.id}
+                type="button"
+                onClick={() => handleLoadSample(scen)}
+                className={`cursor-pointer px-[13px] py-[5px] rounded-[5px] text-[12px] font-mono transition-all ${
+                  activeScenarioId === scen.id
+                    ? "bg-white text-[#141517] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+                    : "text-[#54575F] hover:text-[#141517]"
+                }`}
+              >
+                {scen.short_label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Golden Ratio Spiral Layout: 1.618fr (8) Left Major | 1fr (5->3->2->1) Right Minor */}
@@ -137,6 +170,7 @@ export const ReportPage: React.FC<ReportPageProps> = ({
                       onClick={() => {
                         setImagePreviewUrl(null);
                         setSelectedImage(null);
+                        setActiveScenarioId(null);
                       }}
                       className="cursor-pointer text-[#C9331B] hover:underline"
                     >
@@ -229,6 +263,26 @@ export const ReportPage: React.FC<ReportPageProps> = ({
                     }`}
                   >
                     {lastResult.report.severity}
+                  </span>
+                </div>
+
+                {/* Provenance Pill */}
+                <div className="flex items-center">
+                  <span
+                    className={`inline-flex items-center gap-[5px] px-[8px] py-[3px] rounded-[3px] text-[11px] font-mono border ${
+                      lastResult.usedNano
+                        ? "bg-[#ECFDF5] border-[#BCE5D2] text-[#186847]"
+                        : "bg-[#F5F5F2] border-[#E0E0DA] text-[#54575F]"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block w-[5px] h-[5px] rounded-full ${
+                        lastResult.usedNano ? "bg-[#186847]" : "bg-[#54575F]"
+                      }`}
+                    />
+                    {lastResult.usedNano
+                      ? "On-Device · Gemini Nano · 0 B Sent"
+                      : "On-Device · Local Engine · 0 B Sent"}
                   </span>
                 </div>
 
