@@ -1,16 +1,16 @@
-import { getGenerativeModel, Schema, type GenerativeModel } from "firebase/ai";
+import { getGenerativeModel, InferenceMode, type GenerativeModel } from "firebase/ai";
 import { ai } from "../lib/firebase";
-import type { 
-  TriageReport, 
-  HazardType, 
-  SeverityLevel, 
-  RedactionResult, 
-  ClusteredIncident 
+import type {
+  TriageReport,
+  HazardType,
+  SeverityLevel,
+  RedactionResult,
+  ClusteredIncident
 } from "../types/triage";
 
-// Window AI / Chrome Gemini Nano experimental interface types
+// Window AI / Chrome Gemini Nano interface types (supports Chrome v128+ and v139+)
 interface ChromeLanguageModel {
-  availability: () => Promise<"readily" | "after-download" | "no">;
+  availability: () => Promise<"available" | "downloadable" | "downloading" | "unavailable" | "readily" | "after-download" | "no">;
   create: (options?: unknown) => Promise<{
     prompt: (input: string) => Promise<string>;
     destroy?: () => void;
@@ -27,42 +27,47 @@ declare global {
 }
 
 /**
- * Deterministic Regex Redactor for Victim PII (Phones, IDs, Emails, Addresses)
+ * Deterministic Regex Redactor for Victim PII (Emails, IDs, Phones, Proper Names)
  * Guarantees zero sensitive identifiers leave the edge device under any circumstances.
  */
 export function scrubPiiDeterministically(text: string): RedactionResult {
   const entities: RedactionResult["redactedEntities"] = [];
   let scrubbed = text;
 
-  // 1. Phone numbers (International & Local formats)
-  const phoneRegex = /(\+?\d{1,3}[-.\s]?)?(\(?\d{2,4}\)?[-.\s]?)?\d{3,4}[-.\s]?\d{3,4}\b/g;
-  scrubbed = scrubbed.replace(phoneRegex, (match) => {
-    // Only mask if 7+ digits to avoid year numbers
-    const digitCount = match.replace(/\D/g, "").length;
-    if (digitCount >= 7) {
-      entities.push({ type: "PHONE", matched: match.trim() });
-      return "[PHONE_REDACTED]";
-    }
-    return match;
-  });
-
-  // 2. Email addresses
+  // 1. Email addresses
   const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
   scrubbed = scrubbed.replace(emailRegex, (match) => {
     entities.push({ type: "EMAIL", matched: match });
     return "[EMAIL_REDACTED]";
   });
 
-  // 3. National ID / Passport / Badge Patterns
-  const idRegex = /\b([A-Z]{1,2}[0-9]{6,9}|[0-9]{3}-[0-9]{2}-[0-9]{4})\b/g;
+  // 2. National ID / Passport / Explicit ID Numbers (before phone numbers to avoid misclassifying digits)
+  const explicitNumericIdRegex = /\b(numéro national|national id|passport id|id)\s*:?\s*([A-Z0-9-]{6,14})\b/gi;
+  scrubbed = scrubbed.replace(explicitNumericIdRegex, (_match, label, idVal) => {
+    entities.push({ type: "ID_NUMBER", matched: idVal });
+    return `${label}: [ID_REDACTED]`.replace("::", ":");
+  });
+
+  const idRegex = /\b([A-Z]{1,2}\d{6,9}|\d{3}-\d{2}-\d{4})\b/g;
   scrubbed = scrubbed.replace(idRegex, (match) => {
     entities.push({ type: "ID_NUMBER", matched: match });
     return "[ID_REDACTED]";
   });
 
-  // 4. Common full name patterns after honorifics or introductions in eyewitness reports
-  const nameIntroRegex = /\b(?:my name is|victim is|patient is|contact|Mr\.|Mrs\.|Dr\.)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/gi;
-  scrubbed = scrubbed.replace(nameIntroRegex, (match, p1) => {
+  // 3. Phone numbers (International & Local formats; ignores letters-prefixed codes)
+  const phoneRegex = /(?:^|[\s:(])((?:\+\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{2,4}[-.\s]?\d{2,4}(?:[-.\s]?\d{2,4})?)\b/g;
+  scrubbed = scrubbed.replace(phoneRegex, (fullMatch, numGroup: string) => {
+    const digitCount = numGroup.replace(/\D/g, "").length;
+    if (digitCount >= 7) {
+      entities.push({ type: "PHONE", matched: numGroup.trim() });
+      return fullMatch.replace(numGroup, "[PHONE_REDACTED]");
+    }
+    return fullMatch;
+  });
+
+  // 4. Proper Names following honorifics or contact introductions (case-sensitive on capitalized words)
+  const nameIntroRegex = /\b(?:[Mm]y name is|[Vv]ictim is|[Pp]atient is|[Ww]itness contact:?|[Cc]ontact:?|Mr\.|Mrs\.|Ms\.|Dr\.|Mme)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/g;
+  scrubbed = scrubbed.replace(nameIntroRegex, (match, p1: string) => {
     entities.push({ type: "NAME", matched: p1 });
     return match.replace(p1, "[NAME_REDACTED]");
   });
@@ -75,16 +80,16 @@ export function scrubPiiDeterministically(text: string): RedactionResult {
 }
 
 /**
- * Verifies local Gemini Nano hardware readiness
+ * Verifies local Gemini Nano hardware readiness across Chrome Built-in AI API versions
  */
 export async function checkGeminiNanoAvailability(): Promise<"READY" | "DOWNLOADING" | "UNAVAILABLE"> {
   try {
     if (typeof window !== "undefined") {
-      const lm = window.ai?.languageModel || window.LanguageModel;
+      const lm = window.LanguageModel || window.ai?.languageModel;
       if (lm) {
         const avail = await lm.availability();
-        if (avail === "readily") return "READY";
-        if (avail === "after-download") return "DOWNLOADING";
+        if (avail === "available" || avail === "readily") return "READY";
+        if (avail === "downloading" || avail === "downloadable" || avail === "after-download") return "DOWNLOADING";
       }
     }
   } catch (err) {
@@ -94,7 +99,7 @@ export async function checkGeminiNanoAvailability(): Promise<"READY" | "DOWNLOAD
 }
 
 /**
- * Strictly On-Device Field Triage Model (Firebase AI Logic: mode: "only_on_device")
+ * Strictly On-Device Field Triage Model (Firebase AI Logic: InferenceMode.ONLY_ON_DEVICE)
  * Fails safely: NEVER silently sends unscrubbed field reports to the cloud.
  */
 export async function runLocalTriageInference(
@@ -121,7 +126,7 @@ export async function runLocalTriageInference(
   };
 
   const nanoState = await checkGeminiNanoAvailability();
-  
+
   const systemPrompt = `
 You are an offline disaster triage analyzer running locally on an emergency responder device.
 Analyze the following PII-redacted incident report and optional damage photo.
@@ -136,38 +141,42 @@ Output strictly structured JSON adhering to this schema:
 CRITICAL SAFETY RULE: Never generate medical treatment advice. Output only hazard classification.
 `.trim();
 
+  const jsonSchemaConstraint = {
+    type: "object",
+    properties: {
+      severity: { type: "string", enum: ["CRITICAL", "URGENT", "STABLE"] },
+      hazard_type: {
+        type: "string",
+        enum: [
+          "STRUCTURAL_COLLAPSE",
+          "FLASH_FLOOD",
+          "MEDICAL_EMERGENCY",
+          "FIRE_HAZARD",
+          "BLOCKED_ACCESS"
+        ]
+      },
+      people_affected: { type: ["number", "null"] },
+      sector_hint: { type: "string" },
+      scrubbed_summary: { type: "string" }
+    },
+    required: ["severity", "hazard_type", "people_affected", "sector_hint", "scrubbed_summary"]
+  };
+
   try {
     if (nanoState === "READY") {
-      // 1. Initialize Firebase AI Logic with mode: "only_on_device"
+      // Initialize Firebase AI Logic strictly for on-device execution
       const localModel: GenerativeModel = getGenerativeModel(ai, {
-        mode: "only_on_device",
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.1, // High precision
-          responseSchema: Schema.object({
-            properties: {
-              severity: Schema.enumString({ enum: ["CRITICAL", "URGENT", "STABLE"] }),
-              hazard_type: Schema.enumString({
-                enum: [
-                  "STRUCTURAL_COLLAPSE",
-                  "FLASH_FLOOD",
-                  "MEDICAL_EMERGENCY",
-                  "FIRE_HAZARD",
-                  "BLOCKED_ACCESS"
-                ]
-              }),
-              people_affected: Schema.number(),
-              sector_hint: Schema.string(),
-              scrubbed_summary: Schema.string()
-            },
-            optionalProperties: ["people_affected"]
-          })
+        mode: InferenceMode.ONLY_ON_DEVICE,
+        onDeviceParams: {
+          promptOptions: {
+            responseConstraint: jsonSchemaConstraint
+          }
         }
       });
 
       const promptParts: unknown[] = [systemPrompt, `\n\nREPORT TEXT: ${redaction.redactedText}`];
 
-      // If a local image is supplied, convert to inline base64 part (stays strictly in client memory)
+      // Convert local image to inline base64 (kept strictly in browser memory)
       if (imageFile) {
         const base64Data = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -200,7 +209,7 @@ CRITICAL SAFETY RULE: Never generate medical treatment advice. Output only hazar
     structuredData = extractDeterministicTriage(redaction.redactedText);
   }
 
-  const latencyMs = Math.round(performance.now() - startTime);
+  const latencyMs = Math.max(1, Math.round(performance.now() - startTime));
 
   const report: TriageReport = {
     report_id: `rep_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -224,7 +233,7 @@ CRITICAL SAFETY RULE: Never generate medical treatment advice. Output only hazar
 }
 
 /**
- * Deterministic offline rule parser used if Gemini Nano is still downloading or unavailable.
+ * Deterministic offline rule parser used if Gemini Nano is downloading or unavailable.
  * Ensures the emergency intake pipeline never halts.
  */
 function extractDeterministicTriage(text: string): {
@@ -235,8 +244,7 @@ function extractDeterministicTriage(text: string): {
   scrubbed_summary: string;
 } {
   const lower = text.toLowerCase();
-  
-  // Hazard Type Detection (multilingual keywords: EN, FR, AR transliterated)
+
   let hazard_type: HazardType = "STRUCTURAL_COLLAPSE";
   if (lower.includes("flood") || lower.includes("inondation") || lower.includes("water") || lower.includes("drowning") || lower.includes("sayl")) {
     hazard_type = "FLASH_FLOOD";
@@ -248,32 +256,30 @@ function extractDeterministicTriage(text: string): {
     hazard_type = "BLOCKED_ACCESS";
   }
 
-  // Severity Detection
   let severity: SeverityLevel = "URGENT";
   if (
-    lower.includes("trapped") || 
-    lower.includes("unconscious") || 
-    lower.includes("bleeding heavily") || 
-    lower.includes("collapse") || 
-    lower.includes("immediate") || 
-    lower.includes("mort") || 
-    lower.includes("danger de mort")
+    lower.includes("trapped") ||
+    lower.includes("unconscious") ||
+    lower.includes("bleeding heavily") ||
+    lower.includes("collapse") ||
+    lower.includes("immediate") ||
+    lower.includes("mort") ||
+    lower.includes("danger de mort") ||
+    lower.includes("submerg")
   ) {
     severity = "CRITICAL";
   } else if (lower.includes("minor") || lower.includes("stable") || lower.includes("standing by") || lower.includes("calm")) {
     severity = "STABLE";
   }
 
-  // People Affected Extractor
   let people_affected: number | null = null;
   const numMatch = text.match(/(\d+)\s*(people|persons|victims|casualties|personnes|individus|blesses)/i);
   if (numMatch && numMatch[1]) {
     people_affected = parseInt(numMatch[1], 10);
   }
 
-  // Sector Extractor
   let sector_hint = "Zone Alpha";
-  const sectorMatch = text.match(/(sector|zone|district|rue|quartier|hayy)\s*([A-Za-z0-9-]+)/i);
+  const sectorMatch = text.match(/(sector|zone|district|rue|quartier|hayy|highway)\s*([A-Za-z0-9-]+)/i);
   if (sectorMatch) {
     sector_hint = `${sectorMatch[1]} ${sectorMatch[2]}`;
   }
@@ -283,7 +289,7 @@ function extractDeterministicTriage(text: string): {
     hazard_type,
     people_affected,
     sector_hint,
-    scrubbed_summary: text.slice(0, 160)
+    scrubbed_summary: text.length > 500 ? `${text.slice(0, 497)}…` : text
   };
 }
 
@@ -296,8 +302,7 @@ export async function runCloudCommandSynthesis(
 ): Promise<ClusteredIncident[]> {
   if (reports.length === 0) return [];
 
-  // Prepare sanitized report payload (only PII-scrubbed fields)
-  const sanitizedReports = reports.map(r => ({
+  const sanitizedReports = reports.map((r) => ({
     id: r.report_id,
     hazard: r.hazard_type,
     severity: r.severity,
@@ -332,14 +337,16 @@ Respond with a JSON array of clustered incidents:
 `.trim();
 
   try {
-    // 1. Initialize Cloud Model with Google Search Tool and Cloud-Only Mode
+    // Configure in-cloud model properly via inCloudParams as required by Firebase AI HybridParams
     const cloudModel: GenerativeModel = getGenerativeModel(ai, {
-      model: "gemini-2.5-flash",
-      mode: "only_in_cloud",
-      tools: [{ googleSearch: {} }] as any,
-      generationConfig: {
-        responseMimeType: "application/json",
-        temperature: 0.2
+      mode: InferenceMode.ONLY_IN_CLOUD,
+      inCloudParams: {
+        model: "gemini-2.5-flash",
+        tools: [{ googleSearch: {} }] as any,
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.2
+        }
       }
     });
 
@@ -356,12 +363,11 @@ Respond with a JSON array of clustered incidents:
       total_people_affected: item.total_people_affected || 0,
       synthetic_briefing: item.synthetic_briefing || "Incident corroborated across field responders.",
       grounded_context: item.grounded_context || "Active regional emergency monitoring in progress.",
-      citations: item.citations || [{ title: "Regional Emergency Operations", uri: "https://disaster-response.gov" }],
+      citations: item.citations || [{ title: "Civil Protection Protocol", uri: "https://disaster-response.gov" }],
       timestamp: new Date().toISOString()
     }));
   } catch (err) {
-    console.warn("Cloud synthesis failed or offline, running local cluster aggregation:", err);
-    // Offline local clustering fallback so Command Board always functions
+    console.warn("Cloud synthesis fell back to local cluster aggregation:", err);
     return fallbackLocalClustering(reports);
   }
 }
@@ -384,19 +390,19 @@ function fallbackLocalClustering(reports: TriageReport[]): ClusteredIncident[] {
   for (const [, reps] of groups.entries()) {
     const primary = reps[0];
     const totalAffected = reps.reduce((acc, curr) => acc + (curr.people_affected || 0), 0);
-    const hasCritical = reps.some(r => r.severity === "CRITICAL");
+    const hasCritical = reps.some((r) => r.severity === "CRITICAL");
 
     clusters.push({
       cluster_id: `cluster-auto-${idx++}`,
       hazard_type: primary.hazard_type,
       severity: hasCritical ? "CRITICAL" : primary.severity,
       sector: primary.sector_hint,
-      corroborating_reports: reps.map(r => r.report_id),
+      corroborating_reports: reps.map((r) => r.report_id),
       total_people_affected: totalAffected,
-      synthetic_briefing: `${reps.length} corroborating field report(s) confirm ${primary.hazard_type.replace(/_/g, " ")} at ${primary.sector_hint}. Priority evacuation corridor advised.`,
+      synthetic_briefing: `${reps.length} corroborating field report(s) confirm ${primary.hazard_type.replace(/_/g, " ").toLowerCase()} at ${primary.sector_hint}. Priority evacuation corridor advised.`,
       grounded_context: "Grounding: Local cluster verified from field mesh transmissions. Route clearance underway.",
       citations: [
-        { title: "Standard Civil Protection Operational Protocol", uri: "https://emergency.local/protocols" }
+        { title: "Civil Protection Protocol", uri: "https://emergency.local/protocols" }
       ],
       timestamp: new Date().toISOString()
     });

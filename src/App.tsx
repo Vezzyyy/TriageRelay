@@ -104,10 +104,7 @@ export function App() {
   };
 
   const handleIncrementEdgeCount = () => {
-    setTelemetry((prev) => ({
-      ...prev,
-      reportsTriagedLocally: prev.reportsTriagedLocally + 1
-    }));
+    // Edge count is derived directly from reports.length to prevent snapshot double-counting
   };
 
   const handleIncrementCloudCount = () => {
@@ -120,10 +117,10 @@ export function App() {
   const queuedCount = reports.filter((r) => r.sync_status === "QUEUED_OFFLINE").length;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-red-500/30">
+    <div className="min-h-screen bg-[#F5F5F2] text-[#141517] flex flex-col font-sans selection:bg-[#C9331B]/15 selection:text-[#141517]">
       {/* Persistent Telemetry Bar */}
       <TopTelemetryBar
-        telemetry={telemetry}
+        telemetry={{ ...telemetry, reportsTriagedLocally: reports.length }}
         activeView={activeView}
         onSwitchView={setActiveView}
         onToggleSimulatedOffline={() => setIsSimulatedOffline((prev) => !prev)}
@@ -132,7 +129,7 @@ export function App() {
       />
 
       {/* Main Viewport */}
-      <main className="flex-1 pb-12">
+      <main className="flex-1 pb-[34px]">
         {activeView === "field" ? (
           <FieldIntakeView
             onReportSubmitted={handleReportSubmitted}
@@ -149,23 +146,23 @@ export function App() {
         )}
       </main>
 
-      {/* High-Contrast Tactical Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950 text-slate-500 text-xs py-4 px-6 font-mono">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-400">TriageRelay</span>
-            <span>•</span>
-            <span>#BuildHybridAI 2026 Solo Entry</span>
-            <span>•</span>
-            <span className="text-emerald-400">Zero PII Wire Transmission</span>
+      {/* Restrained Architectural Footer */}
+      <footer className="border-t border-[#E0E0DA] bg-[#F5F5F2] text-[#868991] text-[12px] py-[13px] px-[21px] font-mono">
+        <div className="max-w-[1360px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-[8px]">
+          <div className="flex items-center gap-[8px]">
+            <span className="text-[#141517] font-medium">TriageRelay</span>
+            <span>/</span>
+            <span>#BuildHybridAI 2026</span>
+            <span>/</span>
+            <span className="text-[#186847]">Zero-PII Wire</span>
           </div>
 
-          <div className="flex items-center gap-4 text-slate-400">
-            <span>Client: Chrome v139+ Gemini Nano</span>
-            <span>•</span>
-            <span>Cloud: Gemini 2.5 Flash + Google Search</span>
-            <span>•</span>
-            <span>Apache 2.0 Open Source</span>
+          <div className="flex items-center gap-[13px] text-[#868991]">
+            <span>Edge: Gemini Nano</span>
+            <span>·</span>
+            <span>Cloud: Gemini 2.5 Flash</span>
+            <span>·</span>
+            <span>Apache 2.0</span>
           </div>
         </div>
       </footer>

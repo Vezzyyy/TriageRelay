@@ -1,19 +1,15 @@
 import React, { useState } from "react";
-import { 
-  Camera, 
-  FileText, 
-  ShieldAlert, 
-  AlertTriangle, 
-  Clock, 
-  Lock, 
-  Flame, 
-  Waves, 
-  Building2, 
-  Navigation, 
-  Sparkles,
+import {
+  Camera,
+  Lock,
   ArrowRight,
-  Info,
-  Radio
+  Radio,
+  AlertTriangle,
+  Building2,
+  Waves,
+  Flame,
+  Navigation,
+  ShieldAlert
 } from "lucide-react";
 import { SAMPLE_DISASTER_SCENARIOS, type DisasterScenario } from "../data/sampleScenarios";
 import { runLocalTriageInference } from "../services/hybridAi";
@@ -35,6 +31,7 @@ export const FieldIntakeView: React.FC<FieldIntakeViewProps> = ({
   const [reportText, setReportText] = useState("");
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastResult, setLastResult] = useState<{
     report: TriageReport;
@@ -43,17 +40,18 @@ export const FieldIntakeView: React.FC<FieldIntakeViewProps> = ({
     protocolCard: SafetyProtocolCard;
   } | null>(null);
 
-  // Load sample scenario instantly for testing / judging walkthrough
   const handleLoadScenario = (scenario: DisasterScenario) => {
+    setActiveScenarioId(scenario.id);
     setReportText(scenario.raw_text);
     setImagePreviewUrl(scenario.image_url);
-    setSelectedImage(null); // SVG mock data URL
+    setSelectedImage(null);
     setLastResult(null);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      setActiveScenarioId(null);
       setSelectedImage(file);
       setImagePreviewUrl(URL.createObjectURL(file));
       setLastResult(null);
@@ -65,21 +63,16 @@ export const FieldIntakeView: React.FC<FieldIntakeViewProps> = ({
     setIsProcessing(true);
 
     try {
-      // 1. Run strict on-device inference with deterministic PII scrubbing
       const { report, redaction, latencyMs } = await runLocalTriageInference(
         reportText,
         selectedImage
       );
 
-      // Force status to QUEUED_OFFLINE if in simulated dead zone
       if (isSimulatedOffline) {
         report.sync_status = "QUEUED_OFFLINE";
       }
 
-      // 2. Fetch the vetted safety protocol card for this classified hazard
       const protocolCard = await getVettedProtocolCard(report.hazard_type);
-
-      // 3. Commit to local queue / Firestore offline cache
       const finalReport = await submitTriageReport(report);
 
       setLastResult({
@@ -100,89 +93,103 @@ export const FieldIntakeView: React.FC<FieldIntakeViewProps> = ({
 
   const getHazardIcon = (hazard: HazardType) => {
     switch (hazard) {
-      case "STRUCTURAL_COLLAPSE": return <Building2 className="w-5 h-5 text-rose-400" />;
-      case "FLASH_FLOOD": return <Waves className="w-5 h-5 text-cyan-400" />;
-      case "FIRE_HAZARD": return <Flame className="w-5 h-5 text-orange-400" />;
-      case "BLOCKED_ACCESS": return <Navigation className="w-5 h-5 text-amber-400" />;
-      case "MEDICAL_EMERGENCY": return <ShieldAlert className="w-5 h-5 text-red-500" />;
+      case "STRUCTURAL_COLLAPSE": return <Building2 className="w-[16px] h-[16px] text-[#C9331B]" />;
+      case "FLASH_FLOOD": return <Waves className="w-[16px] h-[16px] text-[#254EDB]" />;
+      case "FIRE_HAZARD": return <Flame className="w-[16px] h-[16px] text-[#B4690E]" />;
+      case "BLOCKED_ACCESS": return <Navigation className="w-[16px] h-[16px] text-[#B4690E]" />;
+      case "MEDICAL_EMERGENCY": return <ShieldAlert className="w-[16px] h-[16px] text-[#C9331B]" />;
     }
   };
 
+  const formatHazardLabel = (hazard: HazardType) =>
+    hazard
+      .toLowerCase()
+      .split("_")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-      {/* Tactical Banner */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+    <div className="max-w-[1360px] mx-auto px-[21px] py-[21px] space-y-[21px]">
+      {/* Architectural Header & Scenario Preset Layer */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-[13px] pb-[13px] border-b border-[#E0E0DA]">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-mono font-bold text-white tracking-wide">
-              FIELD RESPONDER INTAKE
-            </h1>
-            <span className="text-xs font-mono bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded">
-              EDGE ONLY • ZERO CLOUD LEAK
-            </span>
-          </div>
-          <p className="text-sm text-slate-400 mt-1">
-            Multimodal on-device classification via Gemini Nano. Raw images and victim identifiers never leave this terminal.
+          <h1 className="text-[21px] tracking-[-0.02em] font-medium text-[#141517]">
+            Field Responder Intake
+          </h1>
+          <p className="text-[13px] text-[#54575F] mt-[3px]">
+            On-device multimodal classification. Raw media and personal identifiers remain strictly local.
           </p>
         </div>
 
-        {/* 1-Click Scenario Quick-Loaders */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-slate-400 font-mono">Load Scenario:</span>
-          {SAMPLE_DISASTER_SCENARIOS.map((scen, idx) => (
-            <button
-              key={scen.id}
-              onClick={() => handleLoadScenario(scen)}
-              className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition-all flex items-center gap-1"
-            >
-              <Sparkles className="w-3 h-3 text-cyan-400" />
-              Scenario {idx + 1}
-            </button>
-          ))}
+        {/* Concentric Fibonacci Preset Switcher (8px outer, 3px pad, 5px inner) */}
+        <div className="flex flex-wrap items-center gap-[8px]">
+          <span className="text-[12px] font-mono text-[#868991]">Presets</span>
+          <div className="flex items-center bg-[#ECECE7] p-[3px] rounded-[8px] border border-[#E0E0DA]/70">
+            {SAMPLE_DISASTER_SCENARIOS.map((scen) => (
+              <button
+                key={scen.id}
+                onClick={() => handleLoadScenario(scen)}
+                className={`px-[13px] py-[5px] rounded-[5px] text-[12px] font-mono transition-all ${
+                  activeScenarioId === scen.id
+                    ? "bg-white text-[#141517] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+                    : "text-[#54575F] hover:text-[#141517]"
+                }`}
+              >
+                {scen.short_label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Input Form (5 cols) */}
-        <div className="lg:col-span-5 space-y-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4 shadow-md">
-            <h2 className="text-sm font-mono font-semibold uppercase text-slate-300 flex items-center gap-2">
-              <Camera className="w-4 h-4 text-cyan-400" />
-              1. Incident Photo (JPEG/PNG)
-            </h2>
+      {/* Golden Ratio Spiral Layout: 1.618fr (8) Left Major | 1fr (5->3->2->1) Right Minor */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.618fr_1fr] gap-[21px] items-start">
+        {/* SPIRAL BLOCK 8: Primary Field Intake Canvas (61.8%) */}
+        <section className="bg-white border border-[#E0E0DA] rounded-[13px] p-[21px] shadow-[0_1px_2px_rgba(0,0,0,0.03)] space-y-[21px]">
+          {/* Photo Evidence Sub-Frame (8px radius, 13px pad) */}
+          <div className="space-y-[8px]">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-medium text-[#54575F]">
+                Site Evidence (JPEG / PNG)
+              </span>
+              <span className="text-[11px] font-mono text-[#186847] flex items-center gap-[5px]">
+                <Lock className="w-[11px] h-[11px]" />
+                Client Memory Only
+              </span>
+            </div>
 
-            {/* Photo Dropzone & Preview */}
-            <div className="relative group border-2 border-dashed border-slate-700 hover:border-slate-500 rounded-lg p-3 text-center transition-all bg-slate-950/60">
+            <div className="rounded-[8px] border border-[#E0E0DA] bg-[#F5F5F2] overflow-hidden">
               {imagePreviewUrl ? (
-                <div className="space-y-2">
-                  <img
-                    src={imagePreviewUrl}
-                    alt="Damage Evidence"
-                    className="w-full h-44 object-cover rounded-md border border-slate-800"
-                  />
-                  <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                    <span className="flex items-center gap-1 text-emerald-400 font-mono">
-                      <Lock className="w-3 h-3" /> Stays in Client Memory
-                    </span>
+                <div>
+                  <div className="bg-[#ECECE7] border-b border-[#E0E0DA] flex items-center justify-center">
+                    <img
+                      src={imagePreviewUrl}
+                      alt="Field site evidence"
+                      className="w-full max-h-[252px] object-contain"
+                    />
+                  </div>
+                  <div className="px-[13px] py-[8px] flex items-center justify-between text-[12px] font-mono text-[#54575F]">
+                    <span>0 bytes uploaded to cloud</span>
                     <button
                       onClick={() => {
                         setImagePreviewUrl(null);
                         setSelectedImage(null);
+                        setActiveScenarioId(null);
                       }}
-                      className="text-red-400 hover:text-red-300 text-xs"
+                      className="text-[#C9331B] hover:underline"
                     >
-                      Clear
+                      Remove
                     </button>
                   </div>
                 </div>
               ) : (
-                <label className="cursor-pointer block py-6">
-                  <Camera className="w-8 h-8 text-slate-500 mx-auto mb-2 group-hover:text-slate-300 transition-colors" />
-                  <span className="text-xs font-medium text-slate-300 block">
-                    Upload disaster damage photo
+                <label className="cursor-pointer flex flex-col items-center justify-center py-[34px] px-[21px] text-center hover:bg-[#ECECE7]/50 transition-colors">
+                  <Camera className="w-[21px] h-[21px] text-[#868991] mb-[8px]" />
+                  <span className="text-[13px] font-medium text-[#141517]">
+                    Attach field damage photograph
                   </span>
-                  <span className="text-[11px] text-slate-500 block mt-1">
-                    JPEG or PNG • Processed strictly on-device
+                  <span className="text-[12px] text-[#868991] mt-[3px]">
+                    Processed locally via Gemini Nano; never transmitted over wire
                   </span>
                   <input
                     type="file"
@@ -193,217 +200,255 @@ export const FieldIntakeView: React.FC<FieldIntakeViewProps> = ({
                 </label>
               )}
             </div>
+          </div>
 
-            {/* Multilingual Text Input */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-mono font-semibold uppercase text-slate-300 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-cyan-400" />
-                  2. Eyewitness Account
-                </label>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  EN / FR / AR supported
-                </span>
-              </div>
-              <textarea
-                value={reportText}
-                onChange={(e) => setReportText(e.target.value)}
-                placeholder="Type or paste chaotic eyewitness message with victim descriptions, phone numbers, or damage notes..."
-                rows={5}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/50 resize-none font-sans"
-              />
+          {/* Eyewitness Narrative Input */}
+          <div className="space-y-[8px]">
+            <div className="flex items-center justify-between">
+              <label htmlFor="eyewitness-input" className="text-[12px] font-medium text-[#54575F]">
+                Eyewitness Report
+              </label>
+              <span className="text-[11px] font-mono text-[#868991]">
+                EN / FR / AR
+              </span>
+            </div>
+            <textarea
+              id="eyewitness-input"
+              value={reportText}
+              onChange={(e) => setReportText(e.target.value)}
+              placeholder="Enter unstructured field report, casualty estimates, or caller contact details..."
+              rows={5}
+              className="w-full rounded-[8px] border border-[#E0E0DA] bg-[#FAF9F6] p-[13px] text-[14px] leading-relaxed text-[#141517] placeholder-[#868991] focus:outline-none focus:border-[#141517] transition-colors resize-none"
+            />
+          </div>
+
+          {/* Primary Action Layer */}
+          <div className="pt-[13px] border-t border-[#E0E0DA] flex flex-col sm:flex-row sm:items-center justify-between gap-[13px]">
+            <div className="text-[12px] font-mono text-[#868991]">
+              Inference mode: <span className="text-[#141517]">only_on_device</span>
             </div>
 
-            {/* Trigger Button */}
             <button
               onClick={handleRunOfflineTriage}
               disabled={isProcessing || !reportText.trim()}
-              className="w-full py-3 px-4 rounded-lg bg-red-600 hover:bg-red-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-mono font-bold text-sm tracking-wider uppercase transition-all shadow-lg flex items-center justify-center gap-2"
+              className="px-[21px] py-[13px] rounded-[8px] bg-[#C9331B] hover:bg-[#AE2914] disabled:bg-[#E0E0DA] disabled:text-[#868991] text-white font-medium text-[13px] transition-colors flex items-center justify-center gap-[8px]"
             >
               {isProcessing ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Triaging On-Device...
+                  <span className="w-[13px] h-[13px] border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Analyzing On-Device…</span>
                 </>
               ) : (
                 <>
-                  <ShieldAlert className="w-4 h-4" />
-                  Analyze Locally (Offline-Safe)
-                  <ArrowRight className="w-4 h-4" />
+                  <span>Analyze Locally (Offline-Safe)</span>
+                  <ArrowRight className="w-[15px] h-[15px]" />
                 </>
               )}
             </button>
           </div>
-        </div>
+        </section>
 
-        {/* Right Column: Results & Vetted Protocols (7 cols) */}
-        <div className="lg:col-span-7 space-y-4">
+        {/* SPIRAL BLOCK 5 -> 3 -> 2 -> 1: Right Minor Golden Column (38.2%) */}
+        <aside className="space-y-[13px]">
           {lastResult ? (
-            <div className="space-y-4 animate-in fade-in duration-300">
-              {/* Output Header Card */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow-xl">
-                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
-                  <div className="flex items-center gap-2.5">
-                    {getHazardIcon(lastResult.report.hazard_type)}
+            <>
+              {/* SPIRAL CELL 5: Classification + Redaction Diff */}
+              <div className="bg-white border border-[#E0E0DA] rounded-[13px] p-[21px] shadow-[0_1px_2px_rgba(0,0,0,0.03)] space-y-[13px]">
+                {/* Classification Header */}
+                <div className="flex items-start justify-between gap-[13px]">
+                  <div className="flex items-start gap-[8px]">
+                    <div className="mt-[2px]">
+                      {getHazardIcon(lastResult.report.hazard_type)}
+                    </div>
                     <div>
-                      <h3 className="text-base font-bold text-white font-mono">
-                        {lastResult.report.hazard_type.replace(/_/g, " ")}
-                      </h3>
-                      <span className="text-xs text-slate-400 font-mono">
-                        Sector: {lastResult.report.sector_hint}
-                      </span>
+                      <h2 className="text-[15px] font-medium text-[#141517]">
+                        {formatHazardLabel(lastResult.report.hazard_type)}
+                      </h2>
+                      <p className="text-[12px] font-mono text-[#54575F]">
+                        {lastResult.report.sector_hint}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {/* Severity Badge */}
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-mono font-black tracking-wider ${
-                        lastResult.report.severity === "CRITICAL"
-                          ? "bg-red-950 text-red-300 border border-red-600 animate-pulse"
-                          : lastResult.report.severity === "URGENT"
-                          ? "bg-amber-950 text-amber-300 border border-amber-600"
-                          : "bg-emerald-950 text-emerald-300 border border-emerald-600"
-                      }`}
-                    >
-                      {lastResult.report.severity}
-                    </span>
-
-                    {/* Latency Pill */}
-                    <span className="text-xs font-mono bg-slate-950 text-cyan-400 border border-slate-800 px-2.5 py-1 rounded-full flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {lastResult.latencyMs}ms
-                    </span>
-                  </div>
+                  {/* Urgency Tag — bold reserved solely for semantic priority */}
+                  <span
+                    className={`px-[8px] py-[3px] rounded-[3px] text-[11px] font-mono font-semibold tracking-wide ${
+                      lastResult.report.severity === "CRITICAL"
+                        ? "bg-[#FDF2F0] text-[#C9331B] border border-[#F2C6BE]"
+                        : lastResult.report.severity === "URGENT"
+                        ? "bg-[#FEF3C7] text-[#B4690E] border border-[#F5D688]"
+                        : "bg-[#ECFDF5] text-[#186847] border border-[#BCE5D2]"
+                    }`}
+                  >
+                    {lastResult.report.severity}
+                  </span>
                 </div>
 
-                {/* Casualties & Sync Status Bar */}
-                <div className="flex flex-wrap items-center justify-between text-xs font-mono bg-slate-950 p-2.5 rounded-lg border border-slate-800/80 gap-2">
-                  <div className="flex items-center gap-2 text-slate-300">
-                    <span>Estimated Casualties:</span>
-                    <span className="font-bold text-red-400">
+                {/* Tabular Telemetry Sub-Strip (8px radius, 13px pad) */}
+                <div className="rounded-[8px] bg-[#F5F5F2] border border-[#E0E0DA] p-[13px] grid grid-cols-3 gap-[8px] text-[12px] font-mono tabular-nums">
+                  <div>
+                    <span className="block text-[11px] text-[#868991]">Affected</span>
+                    <span className="text-[#141517] font-medium">
                       {lastResult.report.people_affected !== null
-                        ? `${lastResult.report.people_affected} Reported`
-                        : "Unknown / Unconfirmed"}
+                        ? `${lastResult.report.people_affected} persons`
+                        : "Unconfirmed"}
                     </span>
                   </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-400">Sync Wire:</span>
+                  <div>
+                    <span className="block text-[11px] text-[#868991]">Latency</span>
+                    <span className="text-[#141517] font-medium">{lastResult.latencyMs} ms</span>
+                  </div>
+                  <div>
+                    <span className="block text-[11px] text-[#868991]">Wire Status</span>
                     <span
-                      className={`px-2 py-0.5 rounded font-bold text-[11px] ${
+                      className={
                         lastResult.report.sync_status === "SYNCED"
-                          ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
-                          : "bg-amber-950 text-amber-400 border border-amber-800"
-                      }`}
+                          ? "text-[#186847] font-medium"
+                          : "text-[#B4690E] font-medium"
+                      }
                     >
-                      {lastResult.report.sync_status}
+                      {lastResult.report.sync_status === "SYNCED" ? "Synced" : "Queued"}
                     </span>
                   </div>
                 </div>
 
-                {/* BEFORE / AFTER PII REDACTION DIFF */}
-                <div className="space-y-2 pt-1">
-                  <div className="flex items-center justify-between text-xs font-mono">
-                    <span className="font-bold text-slate-300 flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5 text-emerald-400" />
-                      Deterministic PII Redaction Diff
+                {/* Before / After PII Redaction Diff */}
+                <div className="space-y-[8px]">
+                  <div className="flex items-center justify-between text-[12px]">
+                    <span className="font-medium text-[#141517]">
+                      PII Redaction Diff
                     </span>
-                    <span className="text-emerald-400 text-[11px]">
-                      {lastResult.redaction.redactedEntities.length} sensitive tokens scrubbed
+                    <span className="font-mono text-[11px] text-[#186847]">
+                      {lastResult.redaction.redactedEntities.length} tokens scrubbed
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
-                    {/* Before (Original Raw Text) */}
-                    <div className="bg-red-950/20 border border-red-900/40 rounded-lg p-3 space-y-1">
-                      <span className="text-[10px] uppercase font-bold text-red-400 block tracking-wider">
-                        Raw Input (Never Leaves Device)
+                  <div className="space-y-[8px] text-[12px]">
+                    <div className="rounded-[8px] border border-[#F2C6BE] bg-[#FDF2F0]/50 p-[13px] space-y-[5px]">
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-[#C9331B] block">
+                        Raw Local Input (Device Only)
                       </span>
-                      <p className="text-slate-300 break-words line-clamp-4 font-sans text-xs">
+                      <p className="text-[#54575F] leading-relaxed break-words">
                         {lastResult.redaction.originalText}
                       </p>
                     </div>
 
-                    {/* After (Scrubbed Wire Text) */}
-                    <div className="bg-emerald-950/20 border border-emerald-900/40 rounded-lg p-3 space-y-1">
-                      <span className="text-[10px] uppercase font-bold text-emerald-400 block tracking-wider">
+                    <div className="rounded-[8px] border border-[#BCE5D2] bg-[#ECFDF5]/60 p-[13px] space-y-[5px]">
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-[#186847] block">
                         Scrubbed Wire Payload (Zero PII)
                       </span>
-                      <p className="text-slate-200 break-words line-clamp-4 font-sans text-xs">
-                        {lastResult.redaction.redactedText}
+                      <p className="text-[#141517] leading-relaxed break-words">
+                        {lastResult.redaction.redactedText.split(/(\[[A-Z_]+_REDACTED\])/g).map((part, idx) =>
+                          /^\[[A-Z_]+_REDACTED\]$/.test(part) ? (
+                            <span
+                              key={idx}
+                              className="inline-block font-mono text-[11px] bg-[#D1FAE5] text-[#14532D] px-[5px] py-[1px] rounded-[3px]"
+                            >
+                              {part}
+                            </span>
+                          ) : (
+                            <React.Fragment key={idx}>{part}</React.Fragment>
+                          )
+                        )}
                       </p>
                     </div>
                   </div>
                 </div>
+              </div>
 
-                {/* VETTED STATIC SAFETY PROTOCOL CARD (From Remote Config) */}
-                <div className="border border-purple-900/50 bg-purple-950/20 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <ShieldAlert className="w-4 h-4 text-purple-400" />
-                      <h4 className="text-xs font-mono font-bold uppercase text-purple-200">
-                        Vetted Remote Config Safety Protocol: {lastResult.protocolCard.title}
-                      </h4>
+              {/* SPIRAL SUB-DIVISION: 3 (Protocol Card) : 2+1 (Broadcast & Spiral Anchor) */}
+              <div className="grid grid-cols-1 sm:grid-cols-[1.618fr_1fr] gap-[13px] items-stretch">
+                {/* SPIRAL CELL 3: Vetted Remote Config Safety Protocol */}
+                <div className="bg-white border border-[#E0E0DA] rounded-[13px] p-[13px] shadow-[0_1px_2px_rgba(0,0,0,0.03)] space-y-[8px]">
+                  <div className="flex items-center justify-between gap-[8px]">
+                    <span className="text-[12px] font-medium text-[#141517]">
+                      {lastResult.protocolCard.title}
+                    </span>
+                  </div>
+
+                  <ul className="space-y-[5px] text-[12px] text-[#54575F] leading-snug list-disc list-inside">
+                    {lastResult.protocolCard.immediate_actions.slice(0, 3).map((act, i) => (
+                      <li key={i}>{act}</li>
+                    ))}
+                  </ul>
+
+                  <div className="pt-[8px] border-t border-[#E0E0DA] space-y-[5px]">
+                    <span className="text-[11px] font-mono text-[#C9331B] flex items-center gap-[5px]">
+                      <AlertTriangle className="w-[11px] h-[11px]" />
+                      Contraindications
+                    </span>
+                    <ul className="space-y-[3px] text-[11px] text-[#54575F] leading-snug list-disc list-inside">
+                      {lastResult.protocolCard.contraindications.slice(0, 2).map((c, i) => (
+                        <li key={i}>{c}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                {/* SPIRAL CELLS 2 & 1: Stacked Clockwise Inward */}
+                <div className="flex flex-col gap-[8px]">
+                  {/* Cell 2: Broadcast & Remote Config Anchor */}
+                  <div className="bg-[#ECECE7] border border-[#E0E0DA] rounded-[8px] p-[13px] flex-1 flex flex-col justify-between space-y-[8px]">
+                    <div className="flex items-center gap-[5px] text-[11px] font-mono text-[#54575F]">
+                      <Radio className="w-[12px] h-[12px]" />
+                      <span>Broadcast Net</span>
                     </div>
-                    <span className="text-[10px] font-mono text-purple-300 bg-purple-900/60 px-2 py-0.5 rounded">
+                    <p className="text-[12px] font-mono text-[#141517] leading-snug">
+                      {lastResult.protocolCard.broadcast_channel}
+                    </p>
+                    <span className="text-[10px] font-mono text-[#868991] block">
                       {lastResult.protocolCard.version}
                     </span>
                   </div>
 
-                  {/* Immediate Actions */}
-                  <div className="space-y-1.5">
-                    <span className="text-[11px] font-mono font-bold text-emerald-400 uppercase block">
-                      Immediate Mandatory Actions:
-                    </span>
-                    <ul className="space-y-1 text-xs text-slate-200 list-disc list-inside">
-                      {lastResult.protocolCard.immediate_actions.map((act, i) => (
-                        <li key={i}>{act}</li>
-                      ))}
-                    </ul>
+                  {/* Cell 1 (Eye of Spiral): Deterministic Audit Chip */}
+                  <div className="bg-white border border-[#E0E0DA] rounded-[8px] p-[13px] flex flex-col gap-[3px] text-[11px] font-mono">
+                    <span className="text-[#868991]">Privacy Audit</span>
+                    <span className="text-[#186847] font-medium">PII Verified · $0.00</span>
                   </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Quiet Architectural Empty State */
+            <div className="bg-white border border-[#E0E0DA] rounded-[13px] p-[21px] space-y-[21px]">
+              <div>
+                <h2 className="text-[14px] font-medium text-[#141517]">
+                  Local Triage Pipeline
+                </h2>
+                <p className="text-[12px] text-[#54575F] mt-[3px]">
+                  Attach an image or select a preset to observe edge inference.
+                </p>
+              </div>
 
-                  {/* Hard Contraindications (What NEVER to do) */}
-                  <div className="space-y-1.5 pt-1 border-t border-purple-900/40">
-                    <span className="text-[11px] font-mono font-bold text-rose-400 uppercase block flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3 text-rose-400" />
-                      Strict Contraindications (Never Do):
-                    </span>
-                    <ul className="space-y-1 text-xs text-rose-200 list-disc list-inside">
-                      {lastResult.protocolCard.contraindications.map((contra, i) => (
-                        <li key={i}>{contra}</li>
-                      ))}
-                    </ul>
+              <div className="space-y-[8px] text-[12px]">
+                <div className="rounded-[8px] bg-[#F5F5F2] border border-[#E0E0DA] p-[13px] flex gap-[13px]">
+                  <span className="font-mono text-[#868991]">01</span>
+                  <div>
+                    <span className="font-medium text-[#141517] block">Deterministic Redaction</span>
+                    <span className="text-[#54575F]">Phones, emails, IDs, and names are stripped locally.</span>
                   </div>
+                </div>
 
-                  {/* Broadcast Channel */}
-                  <div className="pt-2 flex items-center justify-between text-[11px] font-mono text-slate-400 border-t border-purple-900/40">
-                    <span className="flex items-center gap-1">
-                      <Radio className="w-3.5 h-3.5 text-purple-400" />
-                      Broadcast Net: {lastResult.protocolCard.broadcast_channel}
-                    </span>
-                    <span className="text-emerald-400 font-semibold">
-                      Deterministic Vetted Card
-                    </span>
+                <div className="rounded-[8px] bg-[#F5F5F2] border border-[#E0E0DA] p-[13px] flex gap-[13px]">
+                  <span className="font-mono text-[#868991]">02</span>
+                  <div>
+                    <span className="font-medium text-[#141517] block">Strict Schema Classification</span>
+                    <span className="text-[#54575F]">Gemini Nano classifies severity without medical hallucinations.</span>
+                  </div>
+                </div>
+
+                <div className="rounded-[8px] bg-[#F5F5F2] border border-[#E0E0DA] p-[13px] flex gap-[13px]">
+                  <span className="font-mono text-[#868991]">03</span>
+                  <div>
+                    <span className="font-medium text-[#141517] block">Vetted Protocol Mapping</span>
+                    <span className="text-[#54575F]">Maps hazard type to curated Remote Config safety checklists.</span>
                   </div>
                 </div>
               </div>
             </div>
-          ) : (
-            /* Empty State */
-            <div className="bg-slate-900/50 border border-slate-800/80 rounded-xl p-10 text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
-                <Info className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-semibold text-slate-200">
-                Ready for Field Intake
-              </h3>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Load a scenario above or upload a disaster photo and eyewitness text. Analysis runs 100% locally with zero cloud network dependency.
-              </p>
-            </div>
           )}
-        </div>
+        </aside>
       </div>
     </div>
   );
