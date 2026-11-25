@@ -64,12 +64,7 @@ remoteConfig.defaultConfig = {
   protocol_refresh_timestamp: new Date().toISOString()
 };
 
-// 4. Firebase AI Logic Client SDK Instance
-export const ai: AI = getAI(app, { 
-  backend: new GoogleAIBackend() 
-});
-
-// 5. App Check Initialization (runs with debug token when enabled for local/judging compliance)
+// 4. App Check Initialization (MUST run BEFORE getAI so AIService detects appCheckProvider immediately)
 export let appCheck: AppCheck | null = null;
 if (
   typeof window !== "undefined" &&
@@ -87,6 +82,11 @@ if (
     console.warn("App Check initialization fallback in development:", err);
   }
 }
+
+// 5. Firebase AI Logic Client SDK Instance (initialized after App Check)
+export const ai: AI = getAI(app, {
+  backend: new GoogleAIBackend()
+});
 
 // Helper: Ensure authenticated responder session
 export async function ensureAuthenticatedUser(): Promise<string> {
