@@ -13,7 +13,8 @@ import {
   subscribeToTriageReports, 
   flushOfflineQueue, 
   saveLocalCachedReports,
-  clearAllReports 
+  clearAllReports,
+  getLocalCachedReports
 } from "./services/storageQueue";
 import type { TriageReport, TelemetryState } from "./types/triage";
 
@@ -114,6 +115,17 @@ export function App() {
     }));
   };
 
+  const handleToggleSimulatedOffline = async () => {
+    const nextOffline = !isSimulatedOffline;
+    setIsSimulatedOffline(nextOffline);
+    if (!nextOffline && navigator.onLine) {
+      const synced = await flushOfflineQueue();
+      if (synced > 0) {
+        setReports(getLocalCachedReports());
+      }
+    }
+  };
+
   const queuedCount = reports.filter((r) => r.sync_status === "QUEUED_OFFLINE").length;
 
   return (
@@ -123,7 +135,7 @@ export function App() {
         telemetry={{ ...telemetry, reportsTriagedLocally: reports.length }}
         activeView={activeView}
         onSwitchView={setActiveView}
-        onToggleSimulatedOffline={() => setIsSimulatedOffline((prev) => !prev)}
+        onToggleSimulatedOffline={handleToggleSimulatedOffline}
         isSimulatedOffline={isSimulatedOffline}
         queuedCount={queuedCount}
       />
@@ -135,6 +147,7 @@ export function App() {
             onReportSubmitted={handleReportSubmitted}
             onIncrementEdgeCount={handleIncrementEdgeCount}
             isSimulatedOffline={isSimulatedOffline}
+            reports={reports}
           />
         ) : (
           <CommandBoardView

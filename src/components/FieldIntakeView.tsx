@@ -21,12 +21,14 @@ interface FieldIntakeViewProps {
   onReportSubmitted: (report: TriageReport) => void;
   onIncrementEdgeCount: () => void;
   isSimulatedOffline: boolean;
+  reports?: TriageReport[];
 }
 
 export const FieldIntakeView: React.FC<FieldIntakeViewProps> = ({
   onReportSubmitted,
   onIncrementEdgeCount,
-  isSimulatedOffline
+  isSimulatedOffline,
+  reports
 }) => {
   const [reportText, setReportText] = useState("");
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -58,13 +60,17 @@ export const FieldIntakeView: React.FC<FieldIntakeViewProps> = ({
     }
   };
 
+  const hasInput = Boolean(reportText.trim() || selectedImage || imagePreviewUrl);
+
   const handleRunOfflineTriage = async () => {
-    if (!reportText.trim()) return;
+    if (!hasInput) return;
     setIsProcessing(true);
 
     try {
+      const effectiveText =
+        reportText.trim() || "Site damage photograph attached for local visual assessment.";
       const { report, redaction, latencyMs } = await runLocalTriageInference(
-        reportText,
+        effectiveText,
         selectedImage
       );
 
@@ -73,7 +79,7 @@ export const FieldIntakeView: React.FC<FieldIntakeViewProps> = ({
       }
 
       const protocolCard = await getVettedProtocolCard(report.hazard_type);
-      const finalReport = await submitTriageReport(report);
+      const finalReport = await submitTriageReport(report, isSimulatedOffline);
 
       setLastResult({
         report: finalReport,
@@ -150,7 +156,7 @@ export const FieldIntakeView: React.FC<FieldIntakeViewProps> = ({
           <div className="space-y-[8px]">
             <div className="flex items-center justify-between">
               <span className="text-[12px] font-medium text-[#54575F]">
-                Site Evidence (JPEG / PNG)
+                Site Evidence (JPEG / PNG · Optional)
               </span>
               <span className="text-[11px] font-mono text-[#186847] flex items-center gap-[5px]">
                 <Lock className="w-[11px] h-[11px]" />
@@ -230,8 +236,8 @@ export const FieldIntakeView: React.FC<FieldIntakeViewProps> = ({
 
             <button
               onClick={handleRunOfflineTriage}
-              disabled={isProcessing || !reportText.trim()}
-              className="px-[21px] py-[13px] rounded-[8px] bg-[#C9331B] hover:bg-[#AE2914] disabled:bg-[#E0E0DA] disabled:text-[#868991] text-white font-medium text-[13px] transition-colors flex items-center justify-center gap-[8px]"
+              disabled={isProcessing || !hasInput}
+              className="cursor-pointer disabled:cursor-not-allowed px-[21px] py-[13px] rounded-[8px] bg-[#C9331B] hover:bg-[#AE2914] disabled:bg-[#E0E0DA] disabled:text-[#868991] text-white font-medium text-[13px] transition-colors flex items-center justify-center gap-[8px]"
             >
               {isProcessing ? (
                 <>
@@ -300,15 +306,22 @@ export const FieldIntakeView: React.FC<FieldIntakeViewProps> = ({
                   </div>
                   <div>
                     <span className="block text-[11px] text-[#868991]">Wire Status</span>
-                    <span
-                      className={
-                        lastResult.report.sync_status === "SYNCED"
-                          ? "text-[#186847] font-medium"
-                          : "text-[#B4690E] font-medium"
-                      }
-                    >
-                      {lastResult.report.sync_status === "SYNCED" ? "Synced" : "Queued"}
-                    </span>
+                    {(() => {
+                      const liveSync =
+                        reports?.find((r) => r.report_id === lastResult.report.report_id)?.sync_status ??
+                        lastResult.report.sync_status;
+                      return (
+                        <span
+                          className={
+                            liveSync === "SYNCED"
+                              ? "text-[#186847] font-medium"
+                              : "text-[#B4690E] font-medium"
+                          }
+                        >
+                          {liveSync === "SYNCED" ? "Synced" : "Queued"}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
 

@@ -151,7 +151,7 @@ export async function checkGeminiNanoAvailability(): Promise<"READY" | "DOWNLOAD
       if (lm) {
         const avail = await lm.availability();
         if (avail === "available" || avail === "readily") return "READY";
-        if (avail === "downloading" || avail === "downloadable" || avail === "after-download") return "DOWNLOADING";
+        if (avail === "downloading") return "DOWNLOADING";
       }
     }
   } catch (err) {
@@ -320,7 +320,12 @@ function extractDeterministicTriage(text: string): {
     lower.includes("power line") ||
     lower.includes("cut off") ||
     lower.includes("rubble") ||
-    lower.includes("road")
+    lower.includes("road") ||
+    lower.includes("fender") ||
+    lower.includes("accident") ||
+    lower.includes("collision") ||
+    lower.includes("crash") ||
+    lower.includes("traffic")
   ) {
     hazard_type = "BLOCKED_ACCESS";
   } else if (lower.includes("wildfire") || lower.includes("fire") || lower.includes("smoke") || lower.includes("flames")) {

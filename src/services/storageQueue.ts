@@ -56,32 +56,47 @@ export function saveLocalCachedReports(reports: TriageReport[]): void {
 }
 
 /**
- * Adds a new report: immediately stores in local cache, then attempts Firestore write
+ * Adds a new report: immediately stores in local cache, then attempts Firestore write when online
  */
-export async function submitTriageReport(report: TriageReport): Promise<TriageReport> {
+export async function submitTriageReport(
+  report: TriageReport,
+  isSimulatedOffline = false
+): Promise<TriageReport> {
+  const effectiveOnline = navigator.onLine && !isSimulatedOffline;
+  const localReport: TriageReport = {
+    ...report,
+    sync_status: effectiveOnline ? report.sync_status : "QUEUED_OFFLINE"
+  };
+
   const current = getLocalCachedReports();
-  const updated = [report, ...current.filter(r => r.report_id !== report.report_id)];
+  const updated = [localReport, ...current.filter(r => r.report_id !== localReport.report_id)];
   saveLocalCachedReports(updated);
 
-  // Attempt Firestore write (handled seamlessly by Firestore persistent cache even offline)
-  try {
-    const reportRef = doc(db, "triage_reports", report.report_id);
-    await setDoc(reportRef, {
-      ...report,
-      sync_status: navigator.onLine ? "SYNCED" : "QUEUED_OFFLINE"
-    }, { merge: true });
+  if (!effectiveOnline) {
+    return localReport;
+  }
 
-    if (navigator.onLine) {
-      report.sync_status = "SYNCED";
-      saveLocalCachedReports(
-        updated.map(r => r.report_id === report.report_id ? { ...r, sync_status: "SYNCED" } : r)
-      );
-    }
+  // Attempt Firestore write when online
+  try {
+    const reportRef = doc(db, "triage_reports", localReport.report_id);
+    await setDoc(
+      reportRef,
+      {
+        ...localReport,
+        sync_status: "SYNCED"
+      },
+      { merge: true }
+    );
+
+    localReport.sync_status = "SYNCED";
+    saveLocalCachedReports(
+      updated.map(r => (r.report_id === localReport.report_id ? { ...r, sync_status: "SYNCED" } : r))
+    );
   } catch (err) {
     console.info("Firestore setDoc buffered to offline cache:", err);
   }
 
-  return report;
+  return localReport;
 }
 
 /**
