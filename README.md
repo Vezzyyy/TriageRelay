@@ -80,7 +80,7 @@ flowchart TD
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/TriageRelay.git
+git clone https://github.com/Vezzyyy/TriageRelay.git
 cd TriageRelay
 
 # Install dependencies
