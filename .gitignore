@@ -1,3 +1,6 @@
+# Firebase CLI deploy cache
+.firebase/
+
 # Logs
 logs
 *.log
