@@ -196,9 +196,9 @@ export const DispatchPage: React.FC<DispatchPageProps> = ({
                   }`}
                 />
                 {synthesisMode === "CLOUD_GROUNDED"
-                  ? "Cloud · Gemini 3.8 Flash + Search Grounding"
+                  ? "Cloud · Gemini 3 Flash Preview + Search Grounding"
                   : synthesisMode === "CLOUD"
-                  ? "Cloud · Gemini 3.8 Flash · Live"
+                  ? "Cloud · Gemini 3 Flash Preview · Live"
                   : "Local Mesh · Offline Clustering"}
               </span>
             </div>

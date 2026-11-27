@@ -400,7 +400,7 @@ function extractDeterministicTriage(text: string): {
 }
 
 /**
- * Regional Command Synthesis (ONLY_IN_CLOUD via gemini-2.5-flash with Google Search Grounding)
+ * Regional Command Synthesis (ONLY_IN_CLOUD via gemini-3-flash-preview with Google Search Grounding)
  * Clusters duplicate reports from multiple responders into single corroborated incidents.
  */
 export async function runCloudCommandSynthesis(
@@ -411,7 +411,7 @@ export async function runCloudCommandSynthesis(
   modelName: string;
 }> {
   if (reports.length === 0) {
-    return { clusters: [], mode: "CLOUD", modelName: "gemini-3.8-flash" };
+    return { clusters: [], mode: "CLOUD", modelName: "gemini-3-flash-preview" };
   }
 
   const sanitizedReports = reports.map((r) => ({
@@ -448,7 +448,7 @@ Respond with a JSON array of clustered incidents:
 ]
 `.trim();
 
-  const modelName = "gemini-3.8-flash";
+  const modelName = "gemini-3-flash-preview";
 
   const parseClusterArray = (rawText: string, groundingChunks?: Array<{ web?: { title?: string; uri?: string } }>): ClusteredIncident[] => {
     const cleaned = rawText.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
@@ -478,7 +478,7 @@ Respond with a JSON array of clustered incidents:
     }));
   };
 
-  // Attempt 1: Live Cloud Gemini 3.8 Flash with Google Search Grounding (if Search Grounding quota is provisioned)
+  // Attempt 1: Live Cloud Gemini 3 Flash Preview with Google Search Grounding (if Search Grounding quota is provisioned)
   try {
     const groundedModel: GenerativeModel = getGenerativeModel(ai, {
       mode: InferenceMode.ONLY_IN_CLOUD,
@@ -503,7 +503,7 @@ Respond with a JSON array of clustered incidents:
     console.info("Search Grounding quota unavailable on Spark tier, retrying direct Cloud Gemini synthesis:", searchErr);
   }
 
-  // Attempt 2: Live Cloud Gemini 3.8 Flash (ONLY_IN_CLOUD, Spark free-tier compatible)
+  // Attempt 2: Live Cloud Gemini 3 Flash Preview (ONLY_IN_CLOUD, Spark free-tier compatible)
   try {
     const cloudModel: GenerativeModel = getGenerativeModel(ai, {
       mode: InferenceMode.ONLY_IN_CLOUD,
